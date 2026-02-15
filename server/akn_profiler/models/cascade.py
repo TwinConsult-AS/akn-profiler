@@ -114,8 +114,30 @@ def _recursive_add(
 
         # Add required children as dict with cardinality
         req_children = [c for c in info.children if c.required]
-        if req_children:
-            entry["children"] = {c.name: c.cardinality for c in req_children}
+        # Build exclusive choice branches if element has exclusive groups
+        choice_groups = schema.get_choice_groups(elem_name)
+        exclusive_cg = None
+        for cg in choice_groups:
+            if cg.exclusive:
+                exclusive_cg = cg
+                break
+
+        if req_children or exclusive_cg:
+            child_dict: dict = {}
+            exclusive_members = exclusive_cg.all_elements if exclusive_cg else frozenset()
+            for c in req_children:
+                if c.name not in exclusive_members:
+                    child_dict[c.name] = c.cardinality
+            if exclusive_cg:
+                choice_dict: dict[str, str | None] = {}
+                for branch in exclusive_cg.branches:
+                    for c in info.children:
+                        if c.name in branch.elements and c.required:
+                            choice_dict[c.name] = c.cardinality
+                if choice_dict:
+                    child_dict["choice"] = choice_dict
+            if child_dict:
+                entry["children"] = child_dict
 
         elements[elem_name] = entry if entry else None
 
@@ -242,7 +264,9 @@ def collapse_element(
             continue
         child_dict = e_data.get("children")
         if isinstance(child_dict, dict):
-            e_data["children"] = {k: v for k, v in child_dict.items() if k not in to_remove}
+            e_data["children"] = {
+                k: v for k, v in child_dict.items() if k not in to_remove or k == "choice"
+            }
             if not e_data["children"]:
                 del e_data["children"]
 
@@ -281,6 +305,9 @@ def _walk_orphans(
 
     for child_name in children:
         if child_name in to_remove:
+            continue
+        # Skip meta-keys that are not child element references
+        if child_name == "choice":
             continue
         # Check if any other element (not being removed) also references this child
         is_orphan = True
@@ -337,7 +364,13 @@ def _insert_blank_lines(text: str) -> str:
         # Detect entering the elements section
         if stripped == "  elements:":
             in_elements = True
-        elif stripped and not stripped.startswith(" ") or in_elements and stripped and not stripped.startswith("  "):
+        elif (
+            stripped
+            and not stripped.startswith(" ")
+            or in_elements
+            and stripped
+            and not stripped.startswith("  ")
+        ):
             in_elements = False
 
         # Blank line before major profile sections (documentTypes, elements)

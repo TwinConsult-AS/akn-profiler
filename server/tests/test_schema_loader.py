@@ -145,3 +145,121 @@ class TestElementInfo:
 
     def test_nonexistent_returns_none(self) -> None:
         assert _schema.get_element_info("foobar") is None
+
+
+class TestChoiceGroups:
+    """Verify XSD choice group extraction and attachment."""
+
+    def test_body_has_choice_groups(self) -> None:
+        """body (bodyType) has a choice group for hierElements + componentRef."""
+        groups = _schema.get_choice_groups("body")
+        assert len(groups) >= 1
+        # Should have a non-exclusive (free mix) group
+        free_groups = [g for g in groups if not g.exclusive]
+        assert len(free_groups) >= 1
+        # The group should contain hierarchy elements like chapter, section
+        all_members = free_groups[0].all_elements
+        assert "chapter" in all_members
+        assert "section" in all_members
+
+    def test_hierarchy_element_has_exclusive_choice(self) -> None:
+        """chapter (hierarchy type) should have an exclusive choice
+        between sub-hierarchy and content."""
+        groups = _schema.get_choice_groups("chapter")
+        exclusive = [g for g in groups if g.exclusive]
+        assert len(exclusive) >= 1
+        # One branch should contain 'content'
+        content_branches = []
+        hier_branches = []
+        for cg in exclusive:
+            for b in cg.branches:
+                if "content" in b.elements:
+                    content_branches.append(b)
+                if "article" in b.elements or "section" in b.elements:
+                    hier_branches.append(b)
+        assert len(content_branches) >= 1
+        assert len(hier_branches) >= 1
+
+    def test_body_not_exclusive(self) -> None:
+        """body's choice group should NOT be exclusive (maxOccurs=unbounded)."""
+        groups = _schema.get_choice_groups("body")
+        for g in groups:
+            if "chapter" in g.all_elements:
+                assert not g.exclusive
+
+    def test_body_choice_required(self) -> None:
+        """body's choice group has minOccurs=1 (at least one child required)."""
+        groups = _schema.get_choice_groups("body")
+        for g in groups:
+            if "chapter" in g.all_elements:
+                assert g.min_occurs >= 1
+
+    def test_children_have_choice_group_ids(self) -> None:
+        """Children of body should have choice_group_ids populated."""
+        info = _schema.get_element_info("body")
+        assert info is not None
+        chapter_children = [c for c in info.children if c.name == "chapter"]
+        assert len(chapter_children) == 1
+        assert len(chapter_children[0].choice_group_ids) >= 1
+
+    def test_mainBody_has_choice_groups(self) -> None:
+        """mainBody (maincontent) has choice groups for hier/block/container."""
+        groups = _schema.get_choice_groups("mainBody")
+        assert len(groups) >= 1
+        all_members = groups[0].all_elements
+        # maincontent allows hierElements, blockElements, containerElements
+        assert "chapter" in all_members  # hierElements
+        assert "p" in all_members  # HTMLblock → blockElements
+
+    def test_element_without_choices(self) -> None:
+        """Elements with only sequence content have no choice groups."""
+        groups = _schema.get_choice_groups("akomaNtoso")
+        # akomaNtoso has a sequence(documentType, components?)
+        # documentType is a group ref resolved as a choice, so it may have one
+        # But the sequence itself is not a choice — the group IS a choice inside
+        # Let's just verify the API works
+        assert isinstance(groups, tuple)
+
+
+# ------------------------------------------------------------------
+# get_choice_cardinality
+# ------------------------------------------------------------------
+
+
+class TestGetChoiceCardinality:
+    """Tests for ``get_choice_cardinality``."""
+
+    def test_body_has_choice_cardinality(self) -> None:
+        """body has a choice group, so it should return a cardinality string."""
+        card = _schema.get_choice_cardinality("body")
+        assert card is not None
+        assert ".." in card  # e.g. "1..*"
+
+    def test_body_cardinality_format(self) -> None:
+        """The returned string should match the min..max format."""
+        import re
+
+        card = _schema.get_choice_cardinality("body")
+        assert card is not None
+        assert re.match(r"^\d+\.\.(\d+|\*)$", card)
+
+    def test_akomantoso_no_choice(self) -> None:
+        """akomaNtoso likely has no primary choice group → None."""
+        # akomaNtoso might or might not have a choice group depending
+        # on how the XSD is structured, but at minimum the API should
+        # return either None or a valid string.
+        card = _schema.get_choice_cardinality("akomaNtoso")
+        if card is not None:
+            assert ".." in card
+
+    def test_nonexistent_element(self) -> None:
+        """Non-existent element returns None."""
+        card = _schema.get_choice_cardinality("fooBarBaz123")
+        assert card is None
+
+    def test_hierarchy_element_has_exclusive_choice(self) -> None:
+        """chapter (hierarchy) has an exclusive choice (content vs sub-hier)."""
+        card = _schema.get_choice_cardinality("chapter")
+        assert card is not None
+        # maxOccurs should be 1 for exclusive choice
+        assert card.endswith("..1")

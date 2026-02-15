@@ -350,7 +350,7 @@ def _check_undeclared_child_elements(
     declared = set(profile.elements.keys())
 
     for elem_name, restriction in profile.elements.items():
-        if not restriction.children:
+        if not restriction.children and not restriction.exclusive_children:
             continue
         if not schema.has_element(elem_name):
             continue  # vocabulary module reports this
@@ -366,6 +366,26 @@ def _check_undeclared_child_elements(
                         path=child_path,
                         message=(
                             f"'{child_name}' is listed as a child of "
+                            f"<{elem_name}> but has no element definition "
+                            f"in the profile. Add it to 'elements' to keep "
+                            f"the profile valid."
+                        ),
+                        severity=Severity.ERROR,
+                        line=line_index.get(child_path),
+                    )
+                )
+
+        for child_name in restriction.exclusive_children:
+            if not schema.has_element(child_name):
+                continue
+            if child_name not in declared:
+                child_path = f"profile.elements.{elem_name}.children.choice.{child_name}"
+                errors.append(
+                    ValidationError(
+                        rule_id="strictness.undeclared-child-element",
+                        path=child_path,
+                        message=(
+                            f"'{child_name}' is listed in 'choice:' of "
                             f"<{elem_name}> but has no element definition "
                             f"in the profile. Add it to 'elements' to keep "
                             f"the profile valid."

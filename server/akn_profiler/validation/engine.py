@@ -16,6 +16,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from akn_profiler.validation import (
+    rules_choice,
     rules_datatype,
     rules_identity,
     rules_strictness,
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 _RULE_MODULES = [
     rules_vocabulary,
     rules_structure,
+    rules_choice,
     rules_datatype,
     rules_identity,
     rules_strictness,

@@ -157,6 +157,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   registerScaffoldCommand(context);
   registerCascadeCommands(context);
   registerCursorToLineCommand(context);
+  registerInsertNewLineAndSuggestCommand(context);
 
   // Resolve Python interpreter path from settings
   const config = workspace.getConfiguration("aknProfiler");
@@ -539,6 +540,49 @@ function registerCursorToLineCommand(context: ExtensionContext): void {
   outputChannel.appendLine('Registered command: "akn-profiler.cursorToLine"');
 }
 
+/**
+ * After inserting "choice:", create a new indented line and open the
+ * completion menu so the user can immediately pick exclusive branches.
+ */
+function registerInsertNewLineAndSuggestCommand(
+  context: ExtensionContext
+): void {
+  const disposable = commands.registerCommand(
+    "akn-profiler.insertNewLineAndSuggest",
+    async () => {
+      const editor = window.activeTextEditor;
+      if (!editor) {
+        return;
+      }
+
+      // Calculate indent: +2 after "choice:" key, same level for siblings
+      const curLine = editor.selection.active.line;
+      const lineText = editor.document.lineAt(curLine).text;
+      const currentIndent = lineText.length - lineText.trimStart().length;
+      const isChoiceKey = lineText.trimStart().startsWith("choice:");
+      const targetIndent = isChoiceKey ? currentIndent + 2 : currentIndent;
+      const padding = " ".repeat(targetIndent);
+
+      // Insert a new line with the correct padding at end of current line
+      const lineEnd = editor.document.lineAt(curLine).range.end;
+      await editor.edit((edit) => {
+        edit.insert(lineEnd, "\n" + padding);
+      });
+
+      // Position cursor at the end of the padding
+      const newPos = new VPosition(curLine + 1, targetIndent);
+      editor.selection = new Selection(newPos, newPos);
+
+      await commands.executeCommand("editor.action.triggerSuggest");
+    }
+  );
+
+  context.subscriptions.push(disposable);
+  outputChannel.appendLine(
+    'Registered command: "akn-profiler.insertNewLineAndSuggest"'
+  );
+}
+
 async function showDiffPreview(
   originalDoc: TextDocument,
   newText: string,
@@ -546,9 +590,6 @@ async function showDiffPreview(
 ): Promise<void> {
   // Create a virtual document with the new content
   const originalUri = originalDoc.uri;
-  const previewUri = Uri.parse(
-    `untitled:${originalUri.fsPath}.preview.akn.yaml`
-  );
 
   // Open a new document with the proposed changes
   const previewDoc = await workspace.openTextDocument({

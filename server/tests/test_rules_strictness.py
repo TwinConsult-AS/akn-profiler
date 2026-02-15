@@ -178,3 +178,50 @@ profile:
         ]
         # Both meta and body are undeclared
         assert len(errs) == 2
+
+    def test_warning_for_undeclared_choice_child(self) -> None:
+        """Elements under choice: should also trigger the diagnostic."""
+        yaml = """\
+profile:
+  elements:
+    chapter:
+      children:
+        choice:
+          section:
+          subchapter:
+"""
+        # section and subchapter are valid XSD children of chapter
+        # but not declared in profile.elements
+        assert "strictness.undeclared-child-element" in _warnings(yaml)
+
+    def test_no_warning_for_declared_choice_child(self) -> None:
+        """No warning when choice children ARE declared as elements."""
+        yaml = """\
+profile:
+  elements:
+    chapter:
+      children:
+        choice:
+          section:
+          subchapter:
+    section:
+    subchapter:
+"""
+        errs = [
+            e.rule_id
+            for e in validate_profile(yaml, _schema)
+            if e.rule_id == "strictness.undeclared-child-element"
+        ]
+        assert len(errs) == 0
+
+    def test_choice_only_no_direct_children(self) -> None:
+        """Works when children: has only choice: (no always-present kids)."""
+        yaml = """\
+profile:
+  elements:
+    chapter:
+      children:
+        choice:
+          section:
+"""
+        assert "strictness.undeclared-child-element" in _warnings(yaml)

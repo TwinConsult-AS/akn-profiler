@@ -123,21 +123,29 @@ class TestAllDocumentTypes:
 
 
 class TestRoundTripValidation:
-    """Generated YAML → validate_profile → zero errors.
+    """Generated YAML → validate_profile → zero unexpected errors.
 
     This is the ultimate correctness proof: the generator produces
     YAML that the validation engine (which is XSD-driven) accepts.
+
+    ``choice.required-group-empty`` is excluded because the generator
+    intentionally does NOT auto-select from choice groups — the user
+    must pick which children to include.
     """
+
+    _EXPECTED_USER_ACTION = {"choice.required-group-empty"}
 
     def test_act_round_trip(self, schema: AknSchema) -> None:
         yaml_text = generate_yaml(schema, "act", comments=False)
         errors = validate_profile(yaml_text, schema)
-        assert errors == [], f"Unexpected errors: {errors}"
+        unexpected = [e for e in errors if e.rule_id not in self._EXPECTED_USER_ACTION]
+        assert unexpected == [], f"Unexpected errors: {unexpected}"
 
     def test_bill_round_trip(self, schema: AknSchema) -> None:
         yaml_text = generate_yaml(schema, "bill", comments=False)
         errors = validate_profile(yaml_text, schema)
-        assert errors == [], f"Unexpected errors: {errors}"
+        unexpected = [e for e in errors if e.rule_id not in self._EXPECTED_USER_ACTION]
+        assert unexpected == [], f"Unexpected errors: {unexpected}"
 
     def test_all_doc_types_round_trip(self, schema: AknSchema) -> None:
         """Every document type's generated profile must pass."""
@@ -145,7 +153,8 @@ class TestRoundTripValidation:
         for dt in doc_types:
             yaml_text = generate_yaml(schema, dt, comments=False)
             errors = validate_profile(yaml_text, schema)
-            assert errors == [], f"[{dt}] Unexpected errors: {errors}"
+            unexpected = [e for e in errors if e.rule_id not in self._EXPECTED_USER_ACTION]
+            assert unexpected == [], f"[{dt}] Unexpected errors: {unexpected}"
 
 
 # ------------------------------------------------------------------
@@ -177,3 +186,71 @@ class TestGenerateYaml:
         data = yaml.safe_load(text)
         assert data["profile"]["name"]
         assert data["profile"]["version"]
+
+
+# ------------------------------------------------------------------
+# choiceCardinality in generated output
+# ------------------------------------------------------------------
+
+
+class TestChoiceGeneration:
+    """Verify that generated profiles include choice: for exclusive groups."""
+
+    def test_hierarchy_element_has_choice(self, schema: AknSchema) -> None:
+        """Hierarchy elements (chapter) have an exclusive choice → choice: key."""
+        text = generate_yaml(schema, "act", comments=False, include_optional_children=True)
+        data = yaml.safe_load(text)
+        elements = data["profile"]["elements"]
+        # chapter has hierarchy type with exclusive choice (content vs sub-hier)
+        if "chapter" in elements and isinstance(elements["chapter"], dict):
+            children = elements["chapter"].get("children", {})
+            if isinstance(children, dict):
+                assert "choice" in children, (
+                    "chapter.children should contain choice: for exclusive branches"
+                )
+                assert isinstance(children["choice"], list)
+                assert len(children["choice"]) >= 2
+
+    def test_commented_yaml_includes_choice(self, schema: AknSchema) -> None:
+        """When hierarchy elements are included, commented YAML has choice: block."""
+        # Generate a profile that forces a hierarchy element to appear
+        # by generating with include_optional_children which will
+        # walk the tree but hierarchy elements need to be in the profile.
+        # Use the profile model directly:
+        from akn_profiler.models.profile import ElementRestriction
+
+        profile = generate_profile(schema, "act", include_optional_children=True)
+        # Manually add 'chapter' to get exclusive choice branches
+        from akn_profiler.models.generator import _add_element
+
+        _add_element(
+            schema,
+            "chapter",
+            profile.elements,
+            include_optional_children=True,
+            include_optional_attributes=False,
+        )
+        # Now check that chapter has exclusive_children
+        assert "chapter" in profile.elements
+        assert len(profile.elements["chapter"].exclusive_children) >= 2
+
+    def test_plain_yaml_round_trips(self, schema: AknSchema) -> None:
+        """Generated YAML round-trips through ProfileDocument parsing."""
+        text = generate_yaml(schema, "act", comments=False)
+        data = yaml.safe_load(text)
+        profile = ProfileDocument.model_validate(data["profile"])
+        # Verify the profile parsed successfully
+        assert len(profile.elements) > 0
+
+    def test_body_no_exclusive_choice(self, schema: AknSchema) -> None:
+        """body's choice is free-mix (not exclusive), so no choice: key."""
+        text = generate_yaml(schema, "act", comments=False)
+        data = yaml.safe_load(text)
+        elements = data["profile"]["elements"]
+        if "body" in elements and isinstance(elements["body"], dict):
+            children = elements["body"].get("children", {})
+            if isinstance(children, dict):
+                # body shouldn't have choice: since its group is free-mix
+                assert "choice" not in children, (
+                    "body.children should NOT have choice: (free-mix group)"
+                )

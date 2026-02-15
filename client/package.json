@@ -1,6 +1,6 @@
 {
   "name": "akn-profiler-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "VS Code Language Client for AKN Profiler",
   "engines": {
     "vscode": "^1.85.0"

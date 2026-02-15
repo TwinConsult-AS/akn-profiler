@@ -166,6 +166,35 @@ class TestChildren:
         assert ctx.element_name == "act"
 
 
+class TestChoiceBranches:
+    DOC = (
+        "profile:\n"
+        "  elements:\n"
+        "    body:\n"
+        "      children:\n"
+        "        choice:\n"
+        "          section:\n"
+        "          \n"
+    )
+
+    def test_inside_choice_block(self) -> None:
+        ctx = resolve_context(self.DOC, 6, 10)
+        assert ctx.scope == Scope.CHOICE_BRANCHES
+        assert ctx.element_name == "body"
+
+    def test_on_choice_key_line(self) -> None:
+        ctx = resolve_context(self.DOC, 4, 10)
+        assert ctx.scope == Scope.CHOICE_BRANCHES
+        assert ctx.element_name == "body"
+
+    def test_children_scope_not_choice(self) -> None:
+        """Lines under children: but NOT under choice: stay CHILDREN."""
+        doc = "profile:\n  elements:\n    act:\n      children:\n        meta:\n"
+        ctx = resolve_context(doc, 4, 10)
+        assert ctx.scope == Scope.CHILDREN
+        assert ctx.element_name == "act"
+
+
 class TestStructure:
     DOC = "profile:\n  elements:\n    body:\n      structure:\n        - chapter\n        - \n"
 

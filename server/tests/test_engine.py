@@ -91,23 +91,39 @@ profile:
         language:
           required: true
     body:
+      children:
+        chapter:
       structure:
         - chapter
         - article
         - paragraph
+    chapter:
 """
+
+    # choice.required-group-empty is expected — the generator / hand-crafted
+    # profile intentionally does NOT auto-pick from choice groups.
+    _USER_ACTION_RULES = {"choice.required-group-empty"}
 
     def test_no_errors(self) -> None:
         errors = validate_profile(self.VALID, _schema)
-        hard = [e for e in errors if e.severity == Severity.ERROR]
+        hard = [
+            e
+            for e in errors
+            if e.severity == Severity.ERROR and e.rule_id not in self._USER_ACTION_RULES
+        ]
         for e in hard:
             print(f"  {e.rule_id}: {e.message}")
         assert hard == [], f"Unexpected errors: {hard}"
 
     def test_only_info_level(self) -> None:
-        """No warnings or errors — at most informational notes."""
+        """No warnings or errors — at most informational notes
+        (besides expected choice-group prompts)."""
         errors = validate_profile(self.VALID, _schema)
-        non_info = [e for e in errors if e.severity != Severity.INFO]
+        non_info = [
+            e
+            for e in errors
+            if e.severity != Severity.INFO and e.rule_id not in self._USER_ACTION_RULES
+        ]
         assert non_info == []
 
 

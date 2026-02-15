@@ -1,6 +1,6 @@
 [project]
 name = "akn-profiler-server"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python language server for AKN Profiler — parses Akoma Ntoso XSD schemas, generates Pydantic models, and serves YAML profile editing features over LSP."
 requires-python = ">=3.10"
 license = { text = "SEE LICENSE IN ../LICENSE" }

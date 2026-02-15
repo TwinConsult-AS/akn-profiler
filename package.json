@@ -2,7 +2,7 @@
   "name": "akn-profiler",
   "displayName": "AKN Profiler",
   "description": "VS Code extension for writing YAML application profiles that restrict the Akoma Ntoso (AKN) XML schema. Provides autocomplete, inline suggestions, and automatic generation of minimum viable profiles.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "TwinConsultAS",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "icon.png",
@@ -28,7 +28,6 @@
     "legislative"
   ],
   "activationEvents": [
-    "onLanguage:akn-profile",
     "workspaceContains:**/*.akn.yaml",
     "workspaceContains:**/*.akn.yml"
   ],
@@ -142,7 +141,6 @@
     "configurationDefaults": {
       "[akn-profile]": {
         "editor.semanticHighlighting.enabled": true,
-        "editor.inlayHints.enabled": "on",
         "editor.semanticTokenColorCustomizations": {
           "rules": {
             "class:akn-profile": {

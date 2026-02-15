@@ -43,7 +43,6 @@ from lsprotocol.types import (
     TEXT_DOCUMENT_DID_CLOSE,
     TEXT_DOCUMENT_DID_OPEN,
     TEXT_DOCUMENT_HOVER,
-    TEXT_DOCUMENT_INLAY_HINT,
     TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL,
     CodeAction,
     CodeActionKind,
@@ -64,10 +63,6 @@ from lsprotocol.types import (
     Hover,
     HoverParams,
     InitializeParams,
-    InlayHint,
-    InlayHintKind,
-    InlayHintLabelPart,
-    InlayHintParams,
     InsertTextFormat,
     MarkupContent,
     MarkupKind,
@@ -99,7 +94,7 @@ logging.basicConfig(
 logger = logging.getLogger("akn_profiler")
 
 # Create the language server instance
-server = LanguageServer("akn-profiler", "v0.1.0")
+server = LanguageServer("akn-profiler", "v0.1.1")
 
 
 # Module-level schema instance — populated during initialize
@@ -254,6 +249,9 @@ def completion(params: CompletionParams) -> CompletionList:
     items: list[CompletionItem] = []
 
     existing = set(ctx.existing_keys)
+    # Cross-block exclusion: prevent adding the same element in both
+    # children: and choice:, or duplicate attributes.
+    excluded = existing | set(ctx.cross_block_keys)
 
     if ctx.scope == Scope.EMPTY:
         items.append(_key_completion("profile", "Top-level profile key", "profile:\n  "))
@@ -421,12 +419,57 @@ def completion(params: CompletionParams) -> CompletionList:
 
     elif ctx.scope == Scope.CHILDREN:
         if ctx.element_name:
+            # Offer 'choice:' for any element with 2+ possible children
+            # so the user can create exclusive branches in their profile.
+            all_children = akn_schema.get_children(ctx.element_name)
+            if len(all_children) >= 2 and "choice" not in existing:
+                examples = sorted(c for c in all_children if c not in excluded)[:6]
+                examples_str = ", ".join(examples)
+                ellipsis = ", …" if len(all_children) > 6 else ""
+                items.append(
+                    CompletionItem(
+                        label="choice",
+                        kind=CompletionItemKind.Property,
+                        detail="restrict to exclusive branches",
+                        documentation=MarkupContent(
+                            kind=MarkupKind.Markdown,
+                            value=(
+                                "**choice** — Declare mutually exclusive "
+                                "child groups.\n\n"
+                                "Group children into branches. Only ONE "
+                                "branch applies per element instance, "
+                                "restricting the schema to your use case.\n\n"
+                                f"Available children: {examples_str}{ellipsis}"
+                            ),
+                        ),
+                        insert_text="choice:",
+                        insert_text_format=InsertTextFormat.PlainText,
+                        sort_text="0__choice",
+                        command=Command(
+                            title="Suggest branches",
+                            command="akn-profiler.insertNewLineAndSuggest",
+                        ),
+                    )
+                )
+
+            # Build a child_name → choice group label map for richer details
+            child_group_labels: dict[str, str] = {}
+            choice_groups = akn_schema.get_choice_groups(ctx.element_name)
+            for cg in choice_groups:
+                for branch in cg.branches:
+                    label = branch.label or branch.branch_id
+                    for member in branch.elements:
+                        child_group_labels.setdefault(member, label)
+
             for child_name in akn_schema.get_children(ctx.element_name):
-                if child_name in existing:
+                if child_name in excluded:
                     continue
                 req_children = {c.name for c in akn_schema.get_required_children(ctx.element_name)}
                 is_req = child_name in req_children
                 detail = "required child" if is_req else "optional child"
+                group_label = child_group_labels.get(child_name)
+                if group_label:
+                    detail = f"{detail} [{group_label}]"
                 info = akn_schema.get_element_info(child_name)
                 doc_str = info.doc[:120] if info and info.doc else ""
                 # Find cardinality from parent's ChildInfo
@@ -438,6 +481,8 @@ def completion(params: CompletionParams) -> CompletionList:
                             card = c.cardinality
                             break
                 snippet = f'{child_name}: "{card}"' if card else f"{child_name}:"
+                # Sort by required first, then by group, then alphabetical
+                group_sort = group_label or "zzz"
                 items.append(
                     CompletionItem(
                         label=child_name,
@@ -446,7 +491,7 @@ def completion(params: CompletionParams) -> CompletionList:
                         documentation=MarkupContent(kind=MarkupKind.Markdown, value=doc_str),
                         insert_text=snippet,
                         insert_text_format=InsertTextFormat.PlainText,
-                        sort_text=f"{'0' if is_req else '1'}{child_name}",
+                        sort_text=f"{'0' if is_req else '1'}_{group_sort}_{child_name}",
                     )
                 )
 
@@ -462,6 +507,53 @@ def completion(params: CompletionParams) -> CompletionList:
                         detail="hierarchy level",
                         insert_text=f"- {child_name}",
                         insert_text_format=InsertTextFormat.PlainText,
+                    )
+                )
+
+    elif ctx.scope == Scope.CHOICE_BRANCHES:
+        if ctx.element_name:
+            # Inside choice: — offer child elements as exclusive options.
+            # Each entry is a dict key: "elementName: \"card\""
+            all_children = akn_schema.get_children(ctx.element_name)
+            parent_info = akn_schema.get_element_info(ctx.element_name)
+            # Count how many valid choice elements already exist so we
+            # can chain auto-suggest for the first two picks.
+            existing_choice_count = len([k for k in existing if k in set(all_children)])
+            for child_name in all_children:
+                if child_name in excluded:
+                    continue
+                info = akn_schema.get_element_info(child_name)
+                doc_str = info.doc[:120] if info and info.doc else ""
+                # Look up XSD cardinality for this child
+                card = ""
+                if parent_info:
+                    for c in parent_info.children:
+                        if c.name == child_name:
+                            card = c.cardinality
+                            break
+                if card:
+                    branch_text = f'{child_name}: "{card}"'
+                else:
+                    branch_text = f"{child_name}:"
+                # Chain auto-suggest: if fewer than 2 choice elements
+                # exist, attach a command to prompt for the next one.
+                chain_cmd = None
+                if existing_choice_count < 1:
+                    chain_cmd = Command(
+                        title="Add next choice element",
+                        command="akn-profiler.insertNewLineAndSuggest",
+                    )
+                items.append(
+                    CompletionItem(
+                        label=child_name,
+                        kind=CompletionItemKind.Class,
+                        detail=f"exclusive option ({card})" if card else "exclusive option",
+                        documentation=MarkupContent(kind=MarkupKind.Markdown, value=doc_str)
+                        if doc_str
+                        else None,
+                        insert_text=branch_text,
+                        insert_text_format=InsertTextFormat.PlainText,
+                        command=chain_cmd,
                     )
                 )
 
@@ -519,6 +611,30 @@ def _element_doc(name: str) -> str:
         display = opt_attrs[:10]
         suffix = f" (+{len(opt_attrs) - 10} more)" if len(opt_attrs) > 10 else ""
         parts.append(f"**Optional attributes:** {', '.join(display)}{suffix}")
+    # Choice group summary — only show exclusive choices.
+    # Free-mix groups (maxOccurs > 1) are effectively optional children
+    # and are already listed above.
+    if info.choice_groups:
+        for cg in info.choice_groups:
+            if not cg.exclusive:
+                continue  # skip free-mix groups
+            branch_descs: list[str] = []
+            for br in cg.branches:
+                elems = sorted(br.elements)
+                if len(elems) == 1:
+                    branch_descs.append(f"`{elems[0]}`")
+                elif len(elems) <= 4:
+                    branch_descs.append(", ".join(f"`{e}`" for e in elems))
+                else:
+                    shown = ", ".join(f"`{e}`" for e in elems[:4])
+                    branch_descs.append(f"{shown}, … (+{len(elems) - 4} more)")
+            if branch_descs:
+                either_parts = " OR ".join(branch_descs)
+                req_text = "required" if cg.min_occurs >= 1 else "optional"
+                parts.append(
+                    f"**Either/or** ({req_text}): Must contain either "
+                    f"{either_parts} — but not both."
+                )
     return "\n\n".join(parts) if parts else name
 
 
@@ -609,7 +725,20 @@ def hover(params: HoverParams) -> Hover | None:
             "Keys are child element names, values are cardinality strings "
             '(e.g. `"1..1"`, `"0..*"`) or empty for XSD defaults.\n\n'
             "Cardinality must be at least as strict as the XSD — "
-            "loosening the schema is not allowed."
+            "loosening the schema is not allowed.\n\n"
+            "Use `choice:` to declare mutually exclusive child branches "
+            "(e.g. section OR subchapter, but not both)."
+        ),
+        "choice": (
+            "**choice** — Mutually exclusive children.\n\n"
+            "Each key is an exclusive child element — only ONE of the listed "
+            "children may appear per element instance.\n\n"
+            "Example:\n"
+            "```yaml\n"
+            "choice:\n"
+            '  section: "1..*"\n'
+            '  subchapter: "1..*"\n'
+            "```"
         ),
         "attributes": (
             "**attributes** — Attribute restrictions.\n\n"
@@ -681,6 +810,26 @@ def hover(params: HoverParams) -> Hover | None:
                                 f"`{c.cardinality}` "
                                 f"(min={c.min_occurs}, max={'∞' if c.max_occurs is None else c.max_occurs})"
                             )
+                            # Show choice group membership
+                            if c.choice_group_ids:
+                                for cgid in c.choice_group_ids:
+                                    for cg in parent_info.choice_groups:
+                                        if cg.group_id == cgid:
+                                            mode = "exclusive" if cg.exclusive else "free mix"
+                                            req = "required" if cg.min_occurs >= 1 else "optional"
+                                            # Find the branch this child belongs to
+                                            branch_label = None
+                                            for br in cg.branches:
+                                                if word in br.elements:
+                                                    branch_label = br.label
+                                                    break
+                                            group_desc = (
+                                                f"`{branch_label}`" if branch_label else cgid
+                                            )
+                                            elem_doc += (
+                                                f"\n\n**Choice group:** {group_desc} "
+                                                f"({mode}, {req})"
+                                            )
                             break
             content = elem_doc
 
@@ -914,6 +1063,42 @@ def code_action(params: CodeActionParams) -> list[CodeAction]:
                         )
                     )
 
+        elif rule_id == "choice.required-group-empty":
+            pass  # No quick-fix — user resolves via Add child completions
+
+        elif rule_id == "choice.incomplete-branches":
+            pass  # No quick-fix — user adds branches via completions
+
+        elif rule_id == "choice.exclusive-branch-conflict":
+            # Suggest using choice: to express exclusivity
+            elem_ctx = _find_element_context(doc.source, line)
+            if elem_ctx:
+                actions.append(
+                    CodeAction(
+                        title="Use 'choice:' to declare exclusive branches",
+                        kind=CodeActionKind.QuickFix,
+                        diagnostics=[diagnostic],
+                    )
+                )
+
+            # Also suggest removing conflicting children
+            import re as _re_local
+
+            conflict_m = _re_local.search(r"Conflicting: (.+)$", msg)
+            if conflict_m:
+                conflict_names = [n.strip() for n in conflict_m.group(1).split(",")]
+                for cname in conflict_names:
+                    remove_edit = _remove_child_line_edit(uri, doc.source, cname)
+                    if remove_edit:
+                        actions.append(
+                            CodeAction(
+                                title=f"Remove '{cname}' to resolve conflict",
+                                kind=CodeActionKind.QuickFix,
+                                diagnostics=[diagnostic],
+                                edit=remove_edit,
+                            )
+                        )
+
     # ------------------------------------------------------------------
     # Phase 2: contextual "Add …" lightbulb actions
     # ------------------------------------------------------------------
@@ -957,30 +1142,49 @@ def _replace_word_edit(
 
 
 def _find_element_context(source: str, line: int) -> str | None:
-    """Walk backwards from *line* to find the enclosing element name."""
+    """Walk backwards from *line* to find the enclosing element name.
+
+    Also checks the *current* line so that bare element entries like
+    ``body:`` (with no sub-keys) are recognised when the error line
+    points directly at the element name.
+    """
     import re
 
+    _STRUCTURAL_NAMES = {
+        "attributes",
+        "children",
+        "choice",
+        "structure",
+        "required",
+        "values",
+        "elements",
+        "profile",
+        "documentTypes",
+        "name",
+        "version",
+        "description",
+    }
+
     lines = source.splitlines()
-    target_indent = len(lines[line]) - len(lines[line].lstrip()) if line < len(lines) else 0
+    if line >= len(lines):
+        return None
+
+    # Check the current line first — covers bare element entries.
+    cur = lines[line]
+    m = re.match(r"^\s+(\w[\w-]*):", cur)
+    if m:
+        key = m.group(1)
+        if key not in _STRUCTURAL_NAMES:
+            return key
+
+    target_indent = len(cur) - len(cur.lstrip())
     for i in range(line - 1, -1, -1):
         ln = lines[i]
         indent = len(ln) - len(ln.lstrip())
         m = re.match(r"^\s+(\w[\w-]*):", ln)
         if m and indent < target_indent:
             key = m.group(1)
-            if key not in (
-                "attributes",
-                "children",
-                "structure",
-                "required",
-                "values",
-                "elements",
-                "profile",
-                "documentTypes",
-                "name",
-                "version",
-                "description",
-            ):
+            if key not in _STRUCTURAL_NAMES:
                 return key
     return None
 
@@ -1136,6 +1340,31 @@ def _full_document_edit(uri: str, old_source: str, new_text: str) -> WorkspaceEd
     )
 
 
+def _remove_child_line_edit(uri: str, source: str, child_name: str) -> WorkspaceEdit | None:
+    """Build a WorkspaceEdit that removes the line declaring *child_name*
+    from a ``children:`` section.
+    """
+    lines = source.splitlines()
+    for i, text in enumerate(lines):
+        m = _re.match(r"^(\s+)([\w][\w-]*)\s*:", text)
+        if m and m.group(2) == child_name:
+            # Remove the entire line (including the newline)
+            return WorkspaceEdit(
+                changes={
+                    uri: [
+                        TextEdit(
+                            range=Range(
+                                start=Position(line=i, character=0),
+                                end=Position(line=i + 1, character=0),
+                            ),
+                            new_text="",
+                        )
+                    ]
+                }
+            )
+    return None
+
+
 def _child_name_at_line(lines: list[str], line_idx: int, expected_indent: int) -> str | None:
     """Extract the child element name from a children: entry line.
 
@@ -1164,6 +1393,7 @@ _PROFILE_KEYS = frozenset(
     {
         "attributes",
         "children",
+        "choice",
         "structure",
         "required",
         "values",
@@ -1357,18 +1587,85 @@ def _add_item_actions(uri: str, source: str, cursor_line: int) -> list[CodeActio
         in_attributes = has_attributes and attributes_line <= cursor_line <= attributes_end
         in_structure = has_structure and structure_line <= cursor_line <= structure_end
 
-        # --- Cursor inside "children:" block ---
-        if in_children:
+        # Detect choice: block within children:
+        choice_line = -1
+        choice_end = -1
+        if has_children:
+            for ci in range(children_line + 1, children_end + 1):
+                if ci < len(lines) and lines[ci].strip().startswith("choice"):
+                    choice_line = ci
+                    choice_end = _section_end(lines, ci, sub_indent + 2)
+                    break
+        in_choice = in_children and choice_line >= 0 and choice_line <= cursor_line <= choice_end
+
+        can_children = akn_schema.has_element(ename) and bool(akn_schema.get_children(ename))
+        can_attrs = akn_schema.has_element(ename) and bool(akn_schema.get_attributes(ename))
+
+        # =============================================================
+        # Cascading lightbulb actions — deeper scopes inherit parent
+        # actions so "Add child" and "Add attribute" are always visible.
+        # =============================================================
+
+        # --- Choice branch ---
+        if in_choice:
             actions.append(
                 _make_add_action(
-                    f"Add child element to '{ename}'",
+                    f"Add choice branch to '{ename}'",
                     uri,
-                    children_end,
-                    sub_indent + 2,
+                    choice_end,
+                    sub_indent + 4,
                     is_preferred=True,
                 )
             )
-            # Offer to remove the child under the cursor + orphaned definitions
+
+        # --- Add child (always visible inside element) ---
+        if in_children or in_choice or cursor_line == eline:
+            if has_children:
+                actions.append(
+                    _make_add_action(
+                        f"Add child element to '{ename}'",
+                        uri,
+                        children_end,
+                        sub_indent + 2,
+                        is_preferred=not any(a.is_preferred for a in actions),
+                    )
+                )
+            elif can_children:
+                actions.append(
+                    _make_add_action(
+                        f"Add child element to '{ename}' (new children section)",
+                        uri,
+                        eend,
+                        sub_indent + 2,
+                        section_header="children:",
+                    )
+                )
+
+        # --- Add attribute (always visible inside element) ---
+        if in_attributes or in_children or in_choice or cursor_line == eline:
+            if has_attributes:
+                actions.append(
+                    _make_add_action(
+                        f"Add attribute to '{ename}'",
+                        uri,
+                        attributes_end,
+                        sub_indent + 2,
+                        is_preferred=in_attributes and not any(a.is_preferred for a in actions),
+                    )
+                )
+            elif can_attrs:
+                actions.append(
+                    _make_add_action(
+                        f"Add attribute to '{ename}' (new attributes section)",
+                        uri,
+                        eend,
+                        sub_indent + 2,
+                        section_header="attributes:",
+                    )
+                )
+
+        # --- Remove child under cursor ---
+        if in_children:
             child_on_cursor = _child_name_at_line(lines, cursor_line, sub_indent + 2)
             if child_on_cursor and child_on_cursor not in _PROFILE_KEYS:
                 remove_edit = _build_child_remove_edit(uri, source, ename, child_on_cursor)
@@ -1384,18 +1681,8 @@ def _add_item_actions(uri: str, source: str, cursor_line: int) -> list[CodeActio
                         )
                     )
 
-        # --- Cursor inside "attributes:" block ---
+        # --- Values inside attributes ---
         if in_attributes:
-            actions.append(
-                _make_add_action(
-                    f"Add attribute to '{ename}'",
-                    uri,
-                    attributes_end,
-                    sub_indent + 2,
-                    is_preferred=True,
-                )
-            )
-            # Check for "values:" inside an attribute entry
             for i in range(attributes_line + 1, attributes_end + 1):
                 stripped = lines[i].strip()
                 if not stripped:
@@ -1413,7 +1700,7 @@ def _add_item_actions(uri: str, source: str, cursor_line: int) -> list[CodeActio
                             )
                         )
 
-        # --- Cursor inside "structure:" block ---
+        # --- Structure ---
         if in_structure:
             actions.append(
                 _make_add_action(
@@ -1424,50 +1711,6 @@ def _add_item_actions(uri: str, source: str, cursor_line: int) -> list[CodeActio
                     is_preferred=True,
                 )
             )
-
-        # --- Cursor on the element name line ---
-        if cursor_line == eline:
-            can_children = akn_schema.has_element(ename) and bool(akn_schema.get_children(ename))
-            can_attrs = akn_schema.has_element(ename) and bool(akn_schema.get_attributes(ename))
-            if has_children:
-                actions.append(
-                    _make_add_action(
-                        f"Add child element to '{ename}'",
-                        uri,
-                        children_end,
-                        sub_indent + 2,
-                    )
-                )
-            elif can_children:
-                actions.append(
-                    _make_add_action(
-                        f"Add child element to '{ename}' (new children section)",
-                        uri,
-                        eend,
-                        sub_indent + 2,
-                        section_header="children:",
-                    )
-                )
-
-            if has_attributes:
-                actions.append(
-                    _make_add_action(
-                        f"Add attribute to '{ename}'",
-                        uri,
-                        attributes_end,
-                        sub_indent + 2,
-                    )
-                )
-            elif can_attrs:
-                actions.append(
-                    _make_add_action(
-                        f"Add attribute to '{ename}' (new attributes section)",
-                        uri,
-                        eend,
-                        sub_indent + 2,
-                        section_header="attributes:",
-                    )
-                )
 
         # Only process the element whose range contains the cursor
         break
@@ -1534,6 +1777,7 @@ _STRUCTURAL_KEYS = {
     "required",
     "attributes",
     "children",
+    "choice",
     "structure",
     "values",
 }
@@ -1687,96 +1931,6 @@ def _encode_tokens(tokens: list[tuple[int, int, int, int, int]]) -> list[int]:
         prev_line = line
         prev_col = col
     return data
-
-
-# ==================================================================
-# textDocument/inlayHint — ghost-text placeholders
-# ==================================================================
-
-
-@server.feature(TEXT_DOCUMENT_INLAY_HINT)
-@_safe_handler([])
-def inlay_hint(params: InlayHintParams) -> list[InlayHint]:
-    """Show cardinality hints (e.g. ``1..1``, ``0..*``) as ghost text.
-
-    Hints appear after the colon on element keys, attribute keys,
-    and on child dict keys that have no explicit cardinality value.
-    """
-    if akn_schema is None:
-        return []
-
-    doc = server.workspace.get_text_document(params.text_document.uri)
-    hints: list[InlayHint] = []
-    lines = doc.source.splitlines()
-
-    known_elements = set(akn_schema.element_names())
-
-    # Track section context for distinguishing children vs attributes
-    section_stack: list[tuple[int, str]] = []  # (indent, section_name)
-
-    for line_idx, line_text in enumerate(lines):
-        stripped = line_text.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-
-        indent = len(line_text) - len(stripped)
-
-        # Maintain section stack
-        while section_stack and indent <= section_stack[-1][0]:
-            section_stack.pop()
-
-        key_m = _re.match(r"^(\s*)([\w][\w-]*)\s*:(.*)", line_text)
-        if key_m:
-            key = key_m.group(2)
-            col = len(key_m.group(1))
-            rest = key_m.group(3).strip()
-            rest_clean = rest.split("#")[0].strip() if rest else ""
-            colon_pos = line_text.index(":", col + len(key))
-            hint_char = colon_pos + 1
-
-            # Track structural sections
-            if key in _STRUCTURAL_KEYS:
-                section_stack.append((indent, key))
-
-            # Skip lines outside the visible range (but we still track context)
-            if line_idx < params.range.start.line or line_idx > params.range.end.line:
-                continue
-
-            # Determine parent section
-            parent_section = section_stack[-2][1] if len(section_stack) >= 2 else ""
-            grandparent_section = section_stack[-3][1] if len(section_stack) >= 3 else ""
-
-            # Attribute name under 'attributes:'
-            if parent_section == "attributes" and key not in _STRUCTURAL_KEYS:
-                elem_name = _find_element_context(doc.source, line_idx)
-                if elem_name:
-                    for attr in akn_schema.get_attributes(elem_name):
-                        if attr.name == key:
-                            card = attr.cardinality
-                            type_hint = f" : {attr.type_hint}"
-                            tooltip_text = _attribute_doc(attr)
-                            hints.append(
-                                InlayHint(
-                                    position=Position(
-                                        line=line_idx,
-                                        character=hint_char,
-                                    ),
-                                    label=[
-                                        InlayHintLabelPart(
-                                            value=f" {card}{type_hint}",
-                                            tooltip=MarkupContent(
-                                                kind=MarkupKind.Markdown,
-                                                value=tooltip_text,
-                                            ),
-                                        ),
-                                    ],
-                                    kind=InlayHintKind.Type,
-                                    padding_left=True,
-                                )
-                            )
-                            break
-
-    return hints
 
 
 # ==================================================================

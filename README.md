@@ -1,234 +1,80 @@
 # AKN Profiler
 
-A Visual Studio Code extension for authoring **YAML application profiles** that restrict the [Akoma Ntoso (AKN) 3.0](http://docs.oasis-open.org/legaldocml/akn-core/v1.0/akn-core-v1.0-part1-vocabulary.html) XML schema. It provides autocomplete, inline suggestions, validation, and automatic generation of minimum-viable profile skeletons — all powered by Pydantic models derived from the official AKN XSD.
+Author [YAML application profiles](http://docs.oasis-open.org/legaldocml/akn-core/v1.0/akn-core-v1.0-part1-vocabulary.html) that restrict the Akoma Ntoso 3.0 XSD — defining which elements, attributes, children, and cardinalities a jurisdiction or use-case allows.
 
----
+![Overview](images/overview.png)
 
 ## Features
 
-| Feature | Description |
-|---|---|
-| **Auto-generate profile** | Create a minimum-viable `.akn.yaml` skeleton for any AKN document type |
-| **Autocomplete** | Context-aware suggestions for AKN elements, attributes, and restriction values |
-| **Inline diagnostics** | Real-time validation that profile restrictions conform to the AKN schema |
-| **Hover documentation** | Inline docs for AKN elements pulled from the XSD annotations |
-| **Quick-fix actions** | Code actions to correct invalid restrictions |
-| **Add / Remove lightbulbs** | Contextual lightbulb actions to add children, attributes, values, and structure entries |
-| **Cascade expand / collapse** | Add an element with its full required-child chain, or remove an element and clean up orphans, with diff preview |
-| **Code lens** | "Initialize Profile Scaffold" button on empty files |
-| **Semantic highlighting** | Distinct colors for elements, attributes, keywords, enum values, children, and cardinality |
-| **Inlay hints** | Ghost-text cardinality hints (e.g. `1..1`, `0..*`) after element and child keys |
-| **New Profile wizard** | `AKN: New Profile` command with document-type picker and snippet scaffold |
-| **Snippet generation** | VS Code snippet scaffolds for any AKN document type |
+### New Profile Wizard
 
----
+Run `AKN: New Profile` from the command palette, pick a document type, and get a complete skeleton with every required element, attribute, and cardinality pre-filled — ready to edit.
 
-## Architecture
+![New Profile wizard](images/new-profile-wizard.png)
 
-The extension follows a **client–server** architecture using the [Language Server Protocol (LSP)](https://microsoft.github.io/language-server-protocol/):
+### Autocomplete
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  VS Code                                                 │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  TypeScript Language Client  (client/)             │  │
-│  │  • Spawns & manages the Python server process      │  │
-│  │  • Relays LSP messages (completion, diagnostics…)  │  │
-│  └──────────────┬─────────────────────────────────────┘  │
-│                 │  stdio (JSON-RPC)                       │
-│  ┌──────────────▼─────────────────────────────────────┐  │
-│  │  Python Language Server  (server/)                 │  │
-│  │  ┌───────────┐  ┌──────────┐  ┌────────────────┐  │  │
-│  │  │  pygls     │  │ Pydantic │  │  xsdata        │  │  │
-│  │  │  LSP core  │  │ Models   │  │  XSD parsing   │  │  │
-│  │  └───────────┘  └──────────┘  └────────────────┘  │  │
-│  │                      │                             │  │
-│  │              ┌───────▼───────┐                     │  │
-│  │              │  Validation   │                     │  │
-│  │              │  Engine       │                     │  │
-│  │              └───────────────┘                     │  │
-│  └────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────┘
-                          │
-                ┌─────────▼─────────┐
-                │  schemas/         │
-                │  akomantoso30.xsd │
-                │  xml.xsd          │
-                └───────────────────┘
-```
+Suggestions are context-aware at every level of the profile: element names, attributes, children, document types, enum values, cardinality, structure entries, and choice branches. Only valid options for the current XSD position are offered.
 
-### Data Flow
+![Autocomplete](images/autocomplete.png)
 
-1. **At startup** — the Python server loads `schemas/akomantoso30.xsd`, parses it with **xsdata**, and builds **Pydantic** models representing every AKN element, attribute, type, and constraint.
-2. **On file open/edit** — the user's `.akn.yaml` profile is deserialised and validated against the Pydantic models. Diagnostics (errors/warnings) are pushed to VS Code.
-3. **On completion request** — the server inspects the cursor position in the YAML, determines which AKN schema node is being restricted, and returns valid options.
-4. **On new-file** — a minimum-viable profile skeleton is auto-generated containing required elements and default restrictions.
+### Inline Diagnostics
 
----
+Six validation rule modules run as you type — vocabulary, structure, data types, identity, strictness, and choice groups. Errors and warnings appear inline with clear messages explaining what's wrong and how to fix it.
 
-## Project Structure
+![Diagnostics](images/diagnostics.png)
 
-```
-akn-profiler/
-├── .vscode/
-│   ├── launch.json            # Debug configurations (Client + Server)
-│   ├── tasks.json             # Build & test tasks
-│   ├── settings.json          # Workspace settings
-│   └── extensions.json        # Recommended extensions
-│
-├── client/                    # TypeScript — VS Code Language Client
-│   ├── src/
-│   │   └── extension.ts       # Extension entry point (activate/deactivate)
-│   ├── package.json           # Client dependencies (vscode-languageclient)
-│   └── tsconfig.json
-│
-├── server/                    # Python — Language Server
-│   ├── akn_profiler/
-│   │   ├── __init__.py
-│   │   ├── __main__.py        # `python -m akn_profiler` entry point
-│   │   ├── server.py          # pygls LanguageServer setup & feature handlers
-│   │   ├── models/            # Pydantic BaseModel classes for AKN & profiles
-│   │   │   └── __init__.py
-│   │   ├── xsd/               # XSD schema loading & xsdata bindings
-│   │   │   └── __init__.py
-│   │   └── validation/        # Profile validation against AKN schema
-│   │       └── __init__.py
-│   ├── tests/
-│   │   ├── __init__.py
-│   │   ├── test_cascade.py
-│   │   ├── test_code_actions_add.py
-│   │   ├── test_code_lens.py
-│   │   ├── test_completion.py
-│   │   ├── test_engine.py
-│   │   ├── test_generator.py
-│   │   ├── test_placeholder.py
-│   │   ├── test_rules_datatype.py
-│   │   ├── test_rules_identity.py
-│   │   ├── test_rules_strictness.py
-│   │   ├── test_rules_structure.py
-│   │   ├── test_rules_vocabulary.py
-│   │   ├── test_schema_loader.py
-│   │   ├── test_snippet_generator.py
-│   │   ├── test_yaml_context.py
-│   │   └── test_yaml_parser.py
-│   └── pyproject.toml         # Python project config & dependencies
-│
-├── schemas/                   # Official Akoma Ntoso XSD (source of truth)
-│   ├── akomantoso30.xsd       # AKN 3.0 main schema (OASIS Standard)
-│   └── xml.xsd                # XML namespace support schema
-│
-├── package.json               # Root VS Code extension manifest
-├── tsconfig.json              # Root TypeScript project references
-├── esbuild.mjs                # esbuild bundler configuration
-├── language-configuration.json
-├── .vscodeignore              # Files excluded from VSIX packaging
-├── CHANGELOG.md
-├── .gitignore
-├── LICENSE
-└── README.md
-```
+### Hover Documentation
 
----
+Hover over any element, attribute, profile key, or cardinality value to see documentation pulled from the XSD. Choice groups show an "Either/or" summary of the available branches.
 
-## Installation
+![Hover](images/hover.png)
 
-### From the Marketplace (recommended)
+### Quick Fixes & Lightbulbs
 
-1. Open VS Code.
-2. Go to **Extensions** (Ctrl+Shift+X).
-3. Search for **AKN Profiler**.
-4. Click **Install**.
+Diagnostics come with one-click fixes — typo correction, scaffold insertion, cascade add for missing required elements. Lightbulb actions let you add or remove children, attributes, values, structure entries, and choice branches from any scope.
 
-The extension will automatically create a Python virtual environment and install the language server on first activation.
+![Code actions](images/code-actions.png)
 
-### From VSIX
+### And More
 
-```bash
-code --install-extension akn-profiler-0.1.0.vsix
-```
+- **Cascade expand / collapse** — add an element with its full required-child chain, or remove one and clean up orphans, with diff preview
+- **Choice groups** — `choice:` blocks for mutually exclusive child branches, validated and cross-checked against `children:`
+- **Semantic highlighting** — distinct token colors for element names, attributes, keywords, enum values, cardinality, and booleans
+- **Code lens** — one-click "Initialize Profile Scaffold" on empty `.akn.yaml` files
 
-### Requirements
+## Requirements
 
-- **Python** ≥ 3.10 (must be available on `PATH` or configured via `aknProfiler.server.pythonPath`)
+- **Python** ≥ 3.10 (on `PATH`, or set `aknProfiler.server.pythonPath`)
 - **VS Code** ≥ 1.85
 
-The extension automatically manages a `.venv` with all Python dependencies — no manual `pip install` is needed for end users.
+The extension automatically creates a `.venv` and installs the language server on first activation — no manual `pip install` needed.
 
----
-
-## Configuration
+## Extension Settings
 
 | Setting | Default | Description |
 |---|---|---|
-| `aknProfiler.server.pythonPath` | `"python"` | Path to the Python interpreter used to run the language server |
-| `aknProfiler.schema.version` | `"3.0"` | Akoma Ntoso schema version (currently only 3.0 is supported) |
+| `aknProfiler.server.pythonPath` | `"python"` | Python interpreter used to run the language server |
+| `aknProfiler.schema.version` | `"3.0"` | Akoma Ntoso schema version (currently only 3.0) |
+
+## Known Issues
+
+No known issues. If you encounter a problem, please [open an issue](https://github.com/TwinConsult-AS/akn-profiler/issues).
+
+## Release Notes
+
+### 0.1.1
+
+Added XSD choice group support — `choice:` blocks, cross-block exclusion, choice validation rules, hover documentation, and auto-suggest chaining.
+
+### 0.1.0
+
+Initial release — autocomplete, diagnostics, hover, code actions, cascade expand/collapse, semantic highlighting, code lens, and New Profile wizard.
+
+See the full [CHANGELOG](CHANGELOG.md) for details.
 
 ---
 
-## Development
+## Contributing
 
-### Prerequisites
-
-- **Node.js** ≥ 18 and **npm** ≥ 9
-- **Python** ≥ 3.10
-- **VS Code** ≥ 1.85
-
-### 1. Clone & install Node dependencies
-
-```bash
-git clone https://github.com/TwinConsult-AS/akn-profiler.git
-cd akn-profiler
-npm install          # installs root devDeps + runs postinstall for client/
-```
-
-### 2. Set up the Python environment
-
-```bash
-cd server
-python -m venv ../.venv        # or use an existing venv
-# Windows:
-..\.venv\Scripts\activate
-# macOS / Linux:
-source ../.venv/bin/activate
-
-pip install -e ".[dev]"        # install server package in editable mode with dev extras
-```
-
-### 3. Launch the Extension Development Host
-
-1. Open the workspace in VS Code.
-2. Press **F5** (or run the **Launch Extension (Client)** configuration).
-3. In the new Extension Development Host window, open or create a `.akn.yaml` file.
-
----
-
-## Key Technologies
-
-| Layer | Technology | Role |
-|---|---|---|
-| **Editor integration** | [VS Code Extension API](https://code.visualstudio.com/api) | Extension host, activation, settings |
-| **Client ↔ Server** | [LSP](https://microsoft.github.io/language-server-protocol/) via [vscode-languageclient](https://github.com/microsoft/vscode-languageserver-node) | Completion, diagnostics, hover, code actions |
-| **Server framework** | [pygls](https://github.com/openlawlibrary/pygls) | Python LSP server implementation |
-| **Schema parsing** | [xsdata](https://github.com/tefra/xsdata) | XSD → Python dataclass generation & XML binding |
-| **Data modelling** | [Pydantic v2](https://docs.pydantic.dev/) | Typed models, validation, JSON Schema export |
-| **XML processing** | [lxml](https://lxml.de/) | Fast XML/XSD parsing backend |
-| **Profile format** | YAML (`.akn.yaml`) | Human-friendly application profile authoring |
-
----
-
-## Akoma Ntoso Background
-
-[Akoma Ntoso](http://www.akomantoso.org/) ("linked hearts" in Akan) is an OASIS Standard XML vocabulary for parliamentary, legislative, and judicial documents. The AKN 3.0 schema defines ~310 element names and ~69 attribute names covering:
-
-- **7 document types** — act, bill, debate, judgment, amendment, doc, debateReport
-- **Hierarchical structures** — book, part, title, chapter, article, section, paragraph…
-- **Metadata** — FRBR identification, lifecycle, classification, references
-- **Modifications & versioning** — active/passive modifications, temporal data
-
-An **application profile** restricts this broad schema to a specific jurisdiction or use-case — for example, "Norwegian parliamentary bills must have chapters > articles > paragraphs, and the `language` attribute is required on `<akomaNtoso>`."
-
----
-
-## License
-
-See [LICENSE](LICENSE).
+For development setup, project structure, and contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).

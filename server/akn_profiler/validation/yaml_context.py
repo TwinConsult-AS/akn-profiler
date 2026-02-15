@@ -36,6 +36,7 @@ class Scope(enum.Enum):
     ATTRIBUTE_BODY = "attribute_body"
     ATTRIBUTE_VALUES = "attribute_values"
     CHILDREN = "children"
+    CHOICE_BRANCHES = "choice_branches"
     STRUCTURE = "structure"
 
 
@@ -65,6 +66,15 @@ class CursorContext:
     """Sibling keys already present at the same indent level.
 
     Used to exclude already-defined items from completions.
+    """
+
+    cross_block_keys: list[str] = dataclasses.field(default_factory=list)
+    """Keys from a related sibling block that should also be excluded.
+
+    When in ``CHILDREN`` scope, this contains keys under ``choice:``.
+    When in ``CHOICE_BRANCHES`` scope, this contains keys under ``children:``
+    (excluding ``choice`` itself).  This prevents the same element from
+    being added in both places.
     """
 
     line_text: str = ""
@@ -159,12 +169,16 @@ def resolve_context(source: str, line: int, character: int) -> CursorContext:
     # Determine scope from the key stack.
     scope, elem_name, attr_name = _scope_from_stack(key_stack, lines, line)
 
+    # Gather keys from the related sibling block for cross-exclusion.
+    cross_block_keys = _collect_cross_block_keys(lines, line, cur_indent, scope)
+
     return CursorContext(
         scope=scope,
         element_name=elem_name,
         attribute_name=attr_name,
         indent_level=cur_indent,
         existing_keys=existing_keys,
+        cross_block_keys=cross_block_keys,
         line_text=current_line,
     )
 
@@ -248,6 +262,93 @@ def _collect_sibling_keys(lines: list[str], cursor_line: int, indent: int) -> li
             break
 
     return keys
+
+
+def _collect_cross_block_keys(
+    lines: list[str],
+    cursor_line: int,
+    cursor_indent: int,
+    scope: Scope,
+) -> list[str]:
+    """Collect keys from a related sibling block for cross-exclusion.
+
+    * **CHILDREN** scope → collect keys nested under ``choice:`` (one
+      indent level deeper than the cursor).
+    * **CHOICE_BRANCHES** scope → collect keys under ``children:`` at the
+      same level as ``choice:`` itself (i.e. the cursor indent minus 2),
+      excluding ``choice``.
+
+    Returns an empty list for all other scopes.
+    """
+    if scope == Scope.CHILDREN:
+        # Find the "choice:" key among our siblings; collect ITS children.
+        # "choice:" is at cursor_indent; its children are at cursor_indent+2.
+        for i in range(cursor_line - 1, -1, -1):
+            ind_i, key_i = _parse_key(lines[i])
+            if key_i is not None and ind_i < cursor_indent:
+                break  # reached parent — start of our sibling block
+        # parent_line found; now scan forward for "choice:"
+        # But simpler: just scan all lines around cursor for "choice:" at cursor_indent
+        choice_line = -1
+        # Walk backwards to find the parent ("children:") line
+        parent_start = 0
+        for i in range(cursor_line, -1, -1):
+            ind_i, key_i = _parse_key(lines[i])
+            if key_i is not None and ind_i < cursor_indent:
+                parent_start = i + 1
+                break
+        # Scan forward from parent to find choice: and the block end
+        for i in range(parent_start, len(lines)):
+            ind_i, key_i = _parse_key(lines[i])
+            if key_i is not None and ind_i < cursor_indent and i > parent_start:
+                break
+            if key_i == "choice" and ind_i == cursor_indent:
+                choice_line = i
+                break
+        if choice_line < 0:
+            return []
+        # Collect keys under choice: at cursor_indent + 2
+        child_indent = cursor_indent + 2
+        keys: list[str] = []
+        for i in range(choice_line + 1, len(lines)):
+            ind_i, key_i = _parse_key(lines[i])
+            if key_i is not None:
+                if ind_i == child_indent:
+                    keys.append(key_i)
+                elif ind_i <= cursor_indent:
+                    break
+        return keys
+
+    if scope == Scope.CHOICE_BRANCHES:
+        # Cursor is inside choice: — collect sibling keys from "children:"
+        # that are at the same indent as "choice:" itself (cursor_indent - 2).
+        children_indent = cursor_indent - 2
+        if children_indent < 0:
+            return []
+        # Walk backwards to find "children:" line
+        children_line = -1
+        for i in range(cursor_line, -1, -1):
+            ind_i, key_i = _parse_key(lines[i])
+            if key_i == "children" and ind_i < cursor_indent:
+                children_line = i
+                break
+            if key_i is not None and ind_i < children_indent:
+                break  # passed the parent element, no children: found
+        if children_line < 0:
+            return []
+        # Collect keys at children_indent + 2 under children:, excluding "choice"
+        sibling_indent = children_indent + 2
+        keys = []
+        for i in range(children_line + 1, len(lines)):
+            ind_i, key_i = _parse_key(lines[i])
+            if key_i is not None:
+                if ind_i == sibling_indent and key_i != "choice":
+                    keys.append(key_i)
+                elif ind_i <= children_indent:
+                    break
+        return keys
+
+    return []
 
 
 def _scope_from_stack(
@@ -336,6 +437,8 @@ def _scope_from_stack(
                 return Scope.ATTRIBUTE_VALUES, elem_name, attr_name
             return Scope.ATTRIBUTE_BODY, elem_name, attr_name
         if subsection == "children":
+            if depth >= 5 and names[4] == "choice":
+                return Scope.CHOICE_BRANCHES, elem_name, None
             return Scope.CHILDREN, elem_name, None
         if subsection == "structure":
             return Scope.STRUCTURE, elem_name, None

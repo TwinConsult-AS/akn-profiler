@@ -529,3 +529,49 @@ class TestRemoveLightbulb:
         actions = _add_item_actions(_FAKE_URI, self.SOURCE, cursor_line=3)
         titles = [a.title for a in actions]
         assert not any("remove" in t.lower() for t in titles)
+
+
+# ------------------------------------------------------------------
+# _find_element_context
+# ------------------------------------------------------------------
+
+
+class TestFindElementContext:
+    """Verify that _find_element_context finds the element name even
+    when the error points at a bare element entry (no children: key)."""
+
+    def test_finds_element_on_its_own_line(self):
+        from akn_profiler.server import _find_element_context
+
+        source = textwrap.dedent("""\
+            profile:
+              elements:
+                body:
+        """)
+        # line 2 = "    body:"
+        assert _find_element_context(source, 2) == "body"
+
+    def test_finds_element_from_children_line(self):
+        from akn_profiler.server import _find_element_context
+
+        source = textwrap.dedent("""\
+            profile:
+              elements:
+                body:
+                  children:
+                    chapter:
+        """)
+        # line 3 = "      children:" — should walk up to body
+        assert _find_element_context(source, 3) == "body"
+
+    def test_structural_keys_are_skipped(self):
+        from akn_profiler.server import _find_element_context
+
+        source = textwrap.dedent("""\
+            profile:
+              elements:
+                body:
+                  children:
+        """)
+        # line 3 = "      children:" — structural, should NOT return
+        assert _find_element_context(source, 3) != "children"

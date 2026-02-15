@@ -127,3 +127,43 @@ profile:
         data = yaml.safe_load(result)
         elements = data["profile"]["elements"]
         assert "identification" not in elements
+
+
+class TestChoiceCascade:
+    """expand_element / collapse_element handle choice: correctly."""
+
+    def test_expand_body_no_choice_key(self, schema: AknSchema) -> None:
+        """body has a free-mix group (not exclusive) — no choice: key."""
+        result = expand_element(MINIMAL_PROFILE, "body", schema)
+        data = yaml.safe_load(result)
+        body = data["profile"]["elements"].get("body", {})
+        if isinstance(body, dict):
+            children = body.get("children", {})
+            if isinstance(children, dict):
+                assert "choice" not in children, "body.children should NOT have choice: (free-mix)"
+
+    def test_collapse_preserves_choice(self, schema: AknSchema) -> None:
+        """When collapsing a child, choice: should be preserved."""
+        profile_with_choice = """\
+profile:
+  name: "Test"
+  documentTypes:
+    - act
+  elements:
+    akomaNtoso:
+    chapter:
+      children:
+        num: "1..1"
+        choice:
+          section: "1..*"
+          subchapter: "1..*"
+        article:
+"""
+        result = collapse_element(profile_with_choice, "article", schema)
+        data = yaml.safe_load(result)
+        chapter = data["profile"]["elements"].get("chapter", {})
+        if isinstance(chapter, dict):
+            children = chapter.get("children", {})
+            if isinstance(children, dict):
+                assert "choice" in children
+                assert "article" not in children

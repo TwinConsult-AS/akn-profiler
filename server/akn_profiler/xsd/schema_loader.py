@@ -27,6 +27,7 @@ from enum import Enum
 from typing import Any
 
 from akn_profiler.xsd import generated as gen
+from akn_profiler.xsd.choice_parser import ChoiceGroup, parse_xsd_choices
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,9 @@ class ChildInfo:
     max_occurs: int | None = None
     """Maximum occurrences.  ``None`` means unbounded (∞)."""
 
+    choice_group_ids: tuple[str, ...] = ()
+    """IDs of :class:`ChoiceGroup` instances this child belongs to."""
+
     @property
     def cardinality(self) -> str:
         """Return human-readable cardinality notation.
@@ -121,6 +125,9 @@ class ElementInfo:
     doc: str
     """Extracted documentation string."""
 
+    choice_groups: tuple["ChoiceGroup", ...] = ()
+    """Choice group constraints from the content model."""
+
 
 class AknSchema:
     """
@@ -152,6 +159,7 @@ class AknSchema:
         schema = cls()
         schema._index_enums()
         schema._index_elements()
+        schema._attach_choice_groups()
         logger.info(
             "AKN schema loaded: %d elements, %d enums",
             len(schema._elements),
@@ -208,6 +216,35 @@ class AknSchema:
         """Return a copy of the full enum registry."""
         return dict(self._enums)
 
+    def get_choice_groups(self, xml_name: str) -> tuple[ChoiceGroup, ...]:
+        """Return choice group constraints for *xml_name*'s content model."""
+        info = self._elements.get(xml_name)
+        if info is None:
+            return ()
+        return info.choice_groups
+
+    def get_choice_cardinality(self, xml_name: str) -> str | None:
+        """Return the XSD default choice cardinality for *xml_name*.
+
+        Looks at the **primary** (first meaningful) choice group and
+        converts its ``min_occurs`` / ``max_occurs`` to a ``"min..max"``
+        string using the same notation as child cardinality.
+
+        Returns ``None`` when the element has no choice groups.
+        """
+        groups = self.get_choice_groups(xml_name)
+        if not groups:
+            return None
+        # Pick the first group with min_occurs >= 1 or exclusive; fall
+        # back to the first group overall.
+        primary = groups[0]
+        for cg in groups:
+            if cg.min_occurs >= 1 or cg.exclusive:
+                primary = cg
+                break
+        max_str = "*" if primary.max_occurs is None else str(primary.max_occurs)
+        return f"{primary.min_occurs}..{max_str}"
+
     # ------------------------------------------------------------------
     # Internal indexing
     # ------------------------------------------------------------------
@@ -246,6 +283,70 @@ class AknSchema:
             )
             self._elements[xml_name] = info
             self._class_to_xml[name] = xml_name
+
+    def _attach_choice_groups(self) -> None:
+        """Parse XSD choice groups and attach them to elements.
+
+        For each element, we find the complex type it uses (via the
+        xsdata-generated class name and its MRO) and attach:
+        1. Choice groups to ``ElementInfo.choice_groups``
+        2. Choice group IDs to each ``ChildInfo.choice_group_ids``
+        """
+        parser = parse_xsd_choices()
+
+        # Build mapping: Python class name → complex type name used in XSD.
+        # xsdata names the class after the element but uses the complex type
+        # from the XSD as the base class.  We check both the class name
+        # (PascalCase of the type) and MRO parent class names.
+        for xml_name, info in list(self._elements.items()):
+            # Collect candidate type names: the class itself and all parents
+            candidates = [info.class_name] + info.parent_classes
+            matched_groups: list[ChoiceGroup] = []
+
+            for candidate in candidates:
+                # xsdata class name → XSD type name mapping.
+                # xsdata typically names the Python class identically to the
+                # XSD type (with PascalCase).  We look up by exact name first,
+                # then fall back to case-insensitive.
+                type_name = candidate
+                if type_name in parser.type_choice_groups:
+                    matched_groups.extend(parser.type_choice_groups[type_name])
+                else:
+                    # Try case-insensitive
+                    for tn, cgs in parser.type_choice_groups.items():
+                        if tn.lower() == type_name.lower():
+                            matched_groups.extend(cgs)
+                            break
+
+            if not matched_groups:
+                continue
+
+            # Deduplicate by group_id
+            seen_ids: set[str] = set()
+            unique_groups: list[ChoiceGroup] = []
+            for cg in matched_groups:
+                if cg.group_id not in seen_ids:
+                    seen_ids.add(cg.group_id)
+                    unique_groups.append(cg)
+
+            # Annotate children with their choice group membership
+            new_children: list[ChildInfo] = []
+            for child in info.children:
+                cg_ids: list[str] = []
+                for cg in unique_groups:
+                    if child.name in cg.all_elements:
+                        cg_ids.append(cg.group_id)
+                if cg_ids:
+                    new_children.append(dataclasses.replace(child, choice_group_ids=tuple(cg_ids)))
+                else:
+                    new_children.append(child)
+
+            # Replace the ElementInfo with an updated copy
+            self._elements[xml_name] = dataclasses.replace(
+                info,
+                children=new_children,
+                choice_groups=tuple(unique_groups),
+            )
 
     # ------------------------------------------------------------------
     # Field classification helpers

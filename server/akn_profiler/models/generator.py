@@ -207,14 +207,45 @@ def _add_element(
 
     # Children — dict mapping child name → cardinality string
     children: dict[str, str | None] = {}
-    if include_optional_children:
-        children = {c.name: c.cardinality for c in info.children}
+    exclusive: dict[str, str | None] = {}
+
+    # Check for exclusive choice groups
+    choice_groups = schema.get_choice_groups(elem_name)
+    exclusive_cg = None
+    for cg in choice_groups:
+        if cg.exclusive:
+            exclusive_cg = cg
+            break
+
+    if exclusive_cg is not None:
+        # Build children: always-present elements (not in exclusive branches)
+        exclusive_members = exclusive_cg.all_elements
+        if include_optional_children:
+            children = {
+                c.name: c.cardinality for c in info.children if c.name not in exclusive_members
+            }
+        else:
+            children = {
+                c.name: c.cardinality
+                for c in info.children
+                if c.required and c.name not in exclusive_members
+            }
+        # Build exclusive dict
+        for branch in exclusive_cg.branches:
+            for c in info.children:
+                if c.name in branch.elements:
+                    if c.required or include_optional_children:
+                        exclusive[c.name] = c.cardinality
     else:
-        children = {c.name: c.cardinality for c in info.children if c.required}
+        if include_optional_children:
+            children = {c.name: c.cardinality for c in info.children}
+        else:
+            children = {c.name: c.cardinality for c in info.children if c.required}
 
     elements[elem_name] = ElementRestriction(
         attributes=attrs,
         children=children,
+        exclusive_children=exclusive,
     )
 
 
@@ -242,7 +273,12 @@ def _to_plain_yaml(profile: ProfileDocument) -> str:
     if profile.elements:
         lines.append("  elements:")
         for elem_name, restriction in profile.elements.items():
-            has_content = restriction.attributes or restriction.children or restriction.structure
+            has_content = (
+                restriction.attributes
+                or restriction.children
+                or restriction.exclusive_children
+                or restriction.structure
+            )
             if has_content:
                 lines.append(f"    {elem_name}:")
             else:
@@ -258,13 +294,20 @@ def _to_plain_yaml(profile: ProfileDocument) -> str:
                         for v in attr_r.values:
                             lines.append(f"            - {v}")
 
-            if restriction.children:
+            if restriction.children or restriction.exclusive_children:
                 lines.append("      children:")
                 for child_name, cardinality in restriction.children.items():
                     if cardinality:
                         lines.append(f'        {child_name}: "{cardinality}"')
                     else:
                         lines.append(f"        {child_name}:")
+                if restriction.exclusive_children:
+                    lines.append("        choice:")
+                    for bchild, bcard in restriction.exclusive_children.items():
+                        if bcard:
+                            lines.append(f'          {bchild}: "{bcard}"')
+                        else:
+                            lines.append(f"          {bchild}:")
 
             if restriction.structure:
                 lines.append("      structure:")
@@ -342,7 +385,7 @@ def _to_commented_yaml(profile: ProfileDocument, schema: AknSchema) -> str:
                         lines.append(f"          values: [{vals}]")
 
             # Children
-            if restriction.children:
+            if restriction.children or restriction.exclusive_children:
                 all_children = schema.get_children(elem_name) if info else []
                 req_names = {c.name for c in schema.get_required_children(elem_name)}
                 optional_names = [n for n in all_children if n not in req_names]
@@ -358,6 +401,15 @@ def _to_commented_yaml(profile: ProfileDocument, schema: AknSchema) -> str:
                         lines.append(f'        {child_name}: "{cardinality}"{tag}')
                     else:
                         lines.append(f"        {child_name}:{tag}")
+                if restriction.exclusive_children:
+                    lines.append("        # Exclusive: pick ONE")
+                    lines.append("        choice:")
+                    for bchild, bcard in restriction.exclusive_children.items():
+                        tag = " # required" if bchild in req_names else ""
+                        if bcard:
+                            lines.append(f'          {bchild}: "{bcard}"{tag}')
+                        else:
+                            lines.append(f"          {bchild}:{tag}")
 
             lines.append("")
 

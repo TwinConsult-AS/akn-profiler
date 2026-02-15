@@ -28,7 +28,7 @@ checks that prevent loosening XSD requirements).
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class AttributeRestriction(BaseModel):
@@ -64,6 +64,23 @@ class ElementRestriction(BaseModel):
         Allowed child elements with optional cardinality overrides.
         Keys are child element names, values are cardinality strings
         (e.g. ``"1..1"``, ``"0..*"``) or ``None`` for XSD defaults.
+    ``exclusive_children``
+        Exclusive children extracted from the ``choice:`` key
+        inside ``children:``.  A flat ``dict[str, str|None]``
+        mapping child names to cardinality strings.  Any given element
+        instance must use exactly **one** of these children.
+
+        Example YAML::
+
+            children:
+              num: "1..1"
+              choice:
+                section: "1..*"
+                subchapter: "1..*"
+
+        The ``model_validator`` moves the ``choice`` key out of
+        ``children`` into ``exclusive_children`` so the ``children``
+        dict contains only always-present child entries.
     ``structure``
         Ordered list of hierarchical levels (e.g.
         ``[chapter, article, paragraph]``).  Each level must be a
@@ -72,8 +89,43 @@ class ElementRestriction(BaseModel):
 
     attributes: dict[str, AttributeRestriction] = Field(default_factory=dict)
     children: dict[str, str | None] = Field(default_factory=dict)
-    """Allowed children. Key = child name, value = cardinality or None."""
+    """Allowed children (always-present). Key = child name, value = cardinality or None."""
+    exclusive_children: dict[str, str | None] = Field(default_factory=dict)
+    """Exclusive children from ``choice:``.  Key = child name, value = cardinality."""
     structure: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _extract_choice(cls, data: object) -> object:
+        """Pop ``choice`` from the ``children`` dict.
+
+        In YAML the user writes::
+
+            children:
+              num: "1..1"
+              choice:
+                section: "1..*"
+                subchapter: "1..*"
+
+        This validator moves the ``choice`` key out of ``children``
+        into ``exclusive_children`` so the ``children`` dict contains
+        only always-present child entries.
+        """
+        if not isinstance(data, dict):
+            return data
+        children = data.get("children")
+        if isinstance(children, dict) and "choice" in children:
+            raw_choice = children.pop("choice")
+            if isinstance(raw_choice, dict):
+                data["exclusive_children"] = raw_choice
+            elif isinstance(raw_choice, list):
+                # Legacy list format: merge all branch dicts into one flat dict
+                merged: dict[str, str | None] = {}
+                for item in raw_choice:
+                    if isinstance(item, dict):
+                        merged.update(item)
+                data["exclusive_children"] = merged
+        return data
 
     @field_validator("attributes", mode="before")
     @classmethod
@@ -93,6 +145,9 @@ class ElementRestriction(BaseModel):
             children:
               meta: "1..1"
               body:           # bare key → None → XSD default
+              choice:
+                section: "1..*"
+                subchapter: "1..*"
 
         ``None`` values stay as-is (meaning "use XSD default cardinality").
         """
