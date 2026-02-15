@@ -1,0 +1,38 @@
+# Source & config files (not needed at runtime)
+.vscode/
+.git/
+.gitignore
+.github/
+tsconfig.json
+client/tsconfig.json
+client/tsconfig.tsbuildinfo
+client/src/
+client/package-lock.json
+eslint.config.*
+**/*.map
+
+# Python dev/test artifacts
+server/tests/
+server/akn_profiler/__pycache__/
+server/akn_profiler/**/__pycache__/
+**/__pycache__/
+**/*.pyc
+.venv/
+server/.venv/
+.mypy_cache/
+.ruff_cache/
+server/.ruff_cache/
+.pytest_cache/
+server/.pytest_cache/
+
+# Dev/test files
+test.akn.yaml
+TESTING.md
+esbuild.mjs
+
+# Node modules (esbuild bundles everything needed)
+node_modules/
+client/node_modules/
+
+# Build intermediates
+client/out/**/*.map

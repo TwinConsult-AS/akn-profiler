@@ -1,0 +1,12 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "scopeName": "source.akn-profile",
+    "name": "AKN Profile",
+    "comment": "Inherits full YAML syntax highlighting for .akn.yaml/.akn.yml files",
+    "patterns": [
+        {
+            "include": "source.yaml"
+        }
+    ],
+    "repository": {}
+}

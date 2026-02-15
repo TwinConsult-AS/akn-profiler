@@ -1,0 +1,219 @@
+{
+  "name": "akn-profiler",
+  "displayName": "AKN Profiler",
+  "description": "VS Code extension for writing YAML application profiles that restrict the Akoma Ntoso (AKN) XML schema. Provides autocomplete, inline suggestions, and automatic generation of minimum viable profiles.",
+  "version": "0.1.0",
+  "publisher": "TwinConsultAS",
+  "license": "SEE LICENSE IN LICENSE",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TwinConsult-AS/akn-profiler.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "keywords": [
+    "akoma-ntoso",
+    "akn",
+    "legal",
+    "xml",
+    "profile",
+    "yaml",
+    "legislative"
+  ],
+  "activationEvents": [
+    "onLanguage:akn-profile",
+    "workspaceContains:**/*.akn.yaml",
+    "workspaceContains:**/*.akn.yml"
+  ],
+  "main": "./client/out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "akn-profile",
+        "aliases": [
+          "AKN Profile",
+          "akn-profile"
+        ],
+        "extensions": [
+          ".akn.yaml",
+          ".akn.yml"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "akn-profile",
+        "scopeName": "source.akn-profile",
+        "path": "./syntaxes/akn-profile.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "akn-profiler.newProfile",
+        "title": "AKN: New Profile",
+        "category": "AKN Profiler"
+      },
+      {
+        "command": "akn-profiler.expandElement",
+        "title": "AKN: Cascade Add Element",
+        "category": "AKN Profiler"
+      },
+      {
+        "command": "akn-profiler.collapseElement",
+        "title": "AKN: Cascade Remove Element",
+        "category": "AKN Profiler"
+      },
+      {
+        "command": "akn-profiler.cursorToLine",
+        "title": "AKN: Position Cursor",
+        "category": "AKN Profiler"
+      },
+      {
+        "command": "akn-profiler.insertScaffold",
+        "title": "AKN: Initialize Profile Scaffold",
+        "category": "AKN Profiler"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "akn-profiler.newProfile",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "akn-profiler.expandElement",
+          "when": "editorLangId == akn-profile"
+        },
+        {
+          "command": "akn-profiler.collapseElement",
+          "when": "editorLangId == akn-profile"
+        },
+        {
+          "command": "akn-profiler.cursorToLine",
+          "when": "false"
+        },
+        {
+          "command": "akn-profiler.insertScaffold",
+          "when": "false"
+        }
+      ]
+    },
+    "semanticTokenScopes": [
+      {
+        "language": "akn-profile",
+        "scopes": {
+          "class": [
+            "entity.name.type.element.akn"
+          ],
+          "property": [
+            "entity.name.tag.attribute.akn"
+          ],
+          "keyword": [
+            "keyword.control.akn"
+          ],
+          "enumMember": [
+            "variable.other.enummember.akn"
+          ],
+          "variable": [
+            "entity.name.tag.metadata.akn"
+          ],
+          "type": [
+            "entity.name.type.childref.akn"
+          ],
+          "string": [
+            "string.other.cardinality.akn"
+          ],
+          "macro": [
+            "constant.language.boolean.akn"
+          ]
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "[akn-profile]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.inlayHints.enabled": "on",
+        "editor.semanticTokenColorCustomizations": {
+          "rules": {
+            "class:akn-profile": {
+              "foreground": "#4EC9B0",
+              "bold": false
+            },
+            "class.readonly:akn-profile": {
+              "foreground": "#4EC9B0",
+              "bold": true
+            },
+            "type:akn-profile": {
+              "foreground": "#9CDCFE"
+            },
+            "property:akn-profile": {
+              "foreground": "#DCDCAA"
+            },
+            "keyword:akn-profile": {
+              "foreground": "#C586C0"
+            },
+            "enumMember:akn-profile": {
+              "foreground": "#CE9178"
+            },
+            "string:akn-profile": {
+              "foreground": "#B5CEA8"
+            },
+            "macro:akn-profile": {
+              "foreground": "#569CD6",
+              "bold": true
+            }
+          }
+        }
+      }
+    },
+    "configuration": {
+      "title": "AKN Profiler",
+      "properties": {
+        "aknProfiler.server.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to the Python interpreter used to run the language server."
+        },
+        "aknProfiler.schema.version": {
+          "type": "string",
+          "default": "3.0",
+          "enum": [
+            "3.0"
+          ],
+          "description": "Akoma Ntoso schema version to use."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && node esbuild.mjs",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.mjs --watch",
+    "watch:tsc": "tsc -b -w --noEmit",
+    "check-types": "tsc -b --noEmit",
+    "package": "npm run check-types && node esbuild.mjs --production",
+    "lint": "eslint ./client/src --ext .ts",
+    "postinstall": "cd client && npm install"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.0.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "akn-profiler-client",
+  "version": "0.1.0",
+  "description": "VS Code Language Client for AKN Profiler",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -b",
+    "watch": "tsc -b -w"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

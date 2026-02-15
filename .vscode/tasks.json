@@ -1,0 +1,53 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "npm: compile",
+      "type": "npm",
+      "script": "compile",
+      "problemMatcher": "$tsc",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "npm: watch",
+      "type": "npm",
+      "script": "watch",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch",
+      "group": "build"
+    },
+    {
+      "label": "pip: install server (editable)",
+      "type": "shell",
+      "command": "${config:aknProfiler.server.pythonPath}",
+      "args": [
+        "-m",
+        "pip",
+        "install",
+        "-e",
+        ".[dev]"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/server"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "pytest: run server tests",
+      "type": "shell",
+      "command": "${config:aknProfiler.server.pythonPath}",
+      "args": [
+        "-m",
+        "pytest",
+        "-v"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/server"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

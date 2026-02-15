@@ -1,0 +1,25 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+    "aknProfiler.server.pythonPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+    "python.analysis.typeCheckingMode": "basic",
+    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "[typescript]": {
+        "editor.defaultFormatter": "vscode.typescript-language-features"
+    },
+    "files.associations": {
+        "*.akn.yaml": "akn-profile",
+        "*.akn.yml": "akn-profile"
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/out": true,
+        "**/dist": true,
+        "**/.venv": true
+    }
+}
