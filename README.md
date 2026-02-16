@@ -64,6 +64,10 @@ No known issues. If you encounter a problem, please [open an issue](https://gith
 
 ## Release Notes
 
+### 0.1.3
+
+Fixed three bugs: nested choice parsing for `authorialNote` and similar elements, attribute hover now shows XSD documentation, and removed spurious blue diagnostic on custom enum values for free-typed attributes.
+
 ### 0.1.2
 
 Added `profileNote` for curator annotations on elements — lightbulb action, completion, hover, and semantic highlighting. Fixed semantic token coloring so attribute names, choice branches, and booleans each get distinct colors.

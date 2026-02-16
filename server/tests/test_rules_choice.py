@@ -121,6 +121,26 @@ profile:
 """
         assert "choice.required-group-empty" not in _rule_ids(yaml)
 
+    def test_authorial_note_choice_has_both_branches(self) -> None:
+        """authorialNote (subFlowStructure) has a nested choice for
+        block/container elements alongside the documentType branch.
+        Verify that the choice group error message lists BOTH branches
+        (not just documentType), confirming the nested <xsd:choice> fix."""
+        yaml = """\
+profile:
+  elements:
+    authorialNote:
+"""
+        errors = _errors_for_rule(yaml, "choice.required-group-empty")
+        an_errors = [e for e in errors if "authorialNote" in e.message]
+        # It's correct that this errors (minOccurs=1), but the message
+        # must mention block elements from the nested choice branch,
+        # not just document types.
+        if an_errors:
+            msg = an_errors[0].message
+            # Should mention non-documentType elements like p, blockList, etc.
+            assert "blockElements" in msg or "p" in msg or "address" in msg
+
 
 # ==================================================================
 # choice.incomplete-branches

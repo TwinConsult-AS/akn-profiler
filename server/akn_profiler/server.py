@@ -643,6 +643,8 @@ def _element_doc(name: str) -> str:
 def _attribute_doc(attr: Any) -> str:
     """Build a Markdown documentation string for an element attribute."""
     parts = []
+    if getattr(attr, "doc", ""):
+        parts.append(attr.doc)
     parts.append(f"**Type:** `{attr.type_hint}`")
     if attr.required:
         parts.append("**Required** in XSD")

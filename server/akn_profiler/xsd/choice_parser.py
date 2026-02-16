@@ -331,6 +331,25 @@ class XsdChoiceParser:
                     )
                     branch_idx += 1
 
+            elif tag == f"{_XS_PREFIX}choice":
+                # Nested <xsd:choice> as a branch (e.g., subFlowStructure
+                # has an outer exclusive choice between documentType OR
+                # an inner unbounded choice of block/container/hier elements).
+                # Collect all elements from the nested choice into one branch.
+                elements_inner: set[str] = set()
+                label_parts_inner: list[str] = []
+                self._collect_branch_elements(child, raw_groups, elements_inner, label_parts_inner)
+                if elements_inner:
+                    label = " + ".join(label_parts_inner) if label_parts_inner else None
+                    branches.append(
+                        ChoiceBranch(
+                            branch_id=f"branch_{branch_idx}",
+                            elements=frozenset(elements_inner),
+                            label=label,
+                        )
+                    )
+                    branch_idx += 1
+
             elif tag == f"{_XS_PREFIX}any":
                 # xs:any wildcard — skip, not relevant for profile validation
                 pass

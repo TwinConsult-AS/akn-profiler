@@ -5,6 +5,18 @@ All notable changes to the AKN Profiler extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] — 2026-02-16
+
+### Fixed
+
+- **authorialNote choice groups** — nested `<xsd:choice>` elements in XSD complex types (e.g. `subFlowStructure`) are now correctly parsed and attached as choice group branches. Previously, `authorialNote` and similar elements showed only `documentType` as a required child, incorrectly ignoring the inner choice of block/container elements. The choice parser now handles nested choices recursively.
+- **Attribute hover documentation** — hovering over an attribute name in a profile now displays the XSD documentation text extracted from the attribute group annotation (e.g. `class` → "These attributes are used to specify class, style and title of the element, exactly as in HTML"). Previously only type, pattern, and enum values were shown.
+- **Removed spurious enum diagnostic** — custom `values:` lists on free-typed attributes (e.g. `class`, `style`) no longer emit a blue INFO diagnostic (`datatype.custom-enum-on-free-attribute`). Profiles tightening the schema with custom enums is normal behavior and needs no diagnostic.
+
+### Infrastructure
+
+- Test suite expanded to 301 tests, including new coverage for attribute documentation extraction, nested choice parsing, and updated datatype validation expectations.
+
 ## [0.1.2] — 2026-02-16
 
 ### Added
@@ -81,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `@vscode/vsce` and `esbuild` as dev dependencies.
 - Applied `ruff` auto-fixes across the Python codebase.
 
+[0.1.3]: https://github.com/TwinConsult-AS/akn-profiler/releases/tag/v0.1.3
 [0.1.2]: https://github.com/TwinConsult-AS/akn-profiler/releases/tag/v0.1.2
 [0.1.1]: https://github.com/TwinConsult-AS/akn-profiler/releases/tag/v0.1.1
 [0.1.0]: https://github.com/TwinConsult-AS/akn-profiler/releases/tag/v0.1.0

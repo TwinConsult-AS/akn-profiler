@@ -24,7 +24,9 @@ import logging
 import re
 from dataclasses import fields
 from enum import Enum
+from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree as ET
 
 from akn_profiler.xsd import generated as gen
 from akn_profiler.xsd.choice_parser import ChoiceGroup, parse_xsd_choices
@@ -32,6 +34,63 @@ from akn_profiler.xsd.choice_parser import ChoiceGroup, parse_xsd_choices
 logger = logging.getLogger(__name__)
 
 AKN_NS = "http://docs.oasis-open.org/legaldocml/ns/akn/3.0"
+
+# XSD namespace prefix for ElementTree tag matching
+_XS = "http://www.w3.org/2001/XMLSchema"
+_XS_PREFIX = f"{{{_XS}}}"
+
+# Path to the bundled AKN 3.0 XSD
+_SCHEMA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "schemas"
+_AKN_XSD = _SCHEMA_DIR / "akomantoso30.xsd"
+
+
+def _parse_attribute_group_docs(xsd_path: Path | None = None) -> dict[str, str]:
+    """Parse ``<xsd:attributeGroup>`` definitions and map each directly
+    defined attribute name to the group's documentation ``<comment>`` text.
+
+    When an attribute name appears in multiple groups the **most specific**
+    group (the one that directly defines it, not via a ``ref``) wins.
+
+    Returns a mapping ``{xml_attribute_name: documentation_text}``.
+    """
+    path = xsd_path or _AKN_XSD
+    tree = ET.parse(path)  # noqa: S314
+    root = tree.getroot()
+
+    attr_docs: dict[str, str] = {}
+
+    for ag in root.iterfind(f"{_XS_PREFIX}attributeGroup"):
+        # Only handle top-level definitions (those with a 'name')
+        group_name = ag.get("name")
+        if not group_name:
+            continue
+
+        # Extract <comment> text from <xsd:annotation><xsd:documentation>
+        doc_text = ""
+        annotation = ag.find(f"{_XS_PREFIX}annotation")
+        if annotation is not None:
+            documentation = annotation.find(f"{_XS_PREFIX}documentation")
+            if documentation is not None:
+                # <comment> lives in the AKN namespace
+                comment_el = documentation.find(f"{{{AKN_NS}}}comment")
+                if comment_el is None:
+                    # Fallback: try without namespace
+                    comment_el = documentation.find("comment")
+                if comment_el is not None and comment_el.text:
+                    doc_text = " ".join(comment_el.text.split()).strip()
+
+        if not doc_text:
+            continue
+
+        # Map each directly-defined attribute in this group to the doc
+        for attr_el in ag.findall(f"{_XS_PREFIX}attribute"):
+            attr_name = attr_el.get("name") or attr_el.get("ref")
+            if attr_name:
+                # Only set if not already assigned (first/most-specific wins)
+                if attr_name not in attr_docs:
+                    attr_docs[attr_name] = doc_text
+
+    return attr_docs
 
 
 @dataclasses.dataclass(frozen=True)
@@ -55,6 +114,9 @@ class AttrInfo:
 
     pattern: str | None = None
     """XSD ``xs:pattern`` facet regex, if any (e.g. ``[^\\s]+`` for eId)."""
+
+    doc: str = ""
+    """Documentation extracted from the XSD attribute group annotation."""
 
     @property
     def cardinality(self) -> str:
@@ -144,6 +206,8 @@ class AknSchema:
         self._class_to_xml: dict[str, str] = {}
         # All enum types: enum_class_name -> list of string values
         self._enums: dict[str, list[str]] = {}
+        # attribute xml_name -> documentation from XSD attribute group
+        self._attr_docs: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Factory
@@ -157,6 +221,7 @@ class AknSchema:
         once at server start-up.
         """
         schema = cls()
+        schema._attr_docs = _parse_attribute_group_docs()
         schema._index_enums()
         schema._index_elements()
         schema._attach_choice_groups()
@@ -427,6 +492,7 @@ class AknSchema:
                 required = self._is_required(f)
                 enum_vals = self._enum_values_for_field(f)
                 pattern = f.metadata.get("pattern")
+                doc = self._attr_docs.get(xml_name, "")
                 attrs.append(
                     AttrInfo(
                         name=xml_name,
@@ -435,6 +501,7 @@ class AknSchema:
                         type_hint=type_str,
                         enum_values=enum_vals,
                         pattern=pattern,
+                        doc=doc,
                     )
                 )
             elif field_type == "Element":

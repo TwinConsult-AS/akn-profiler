@@ -45,10 +45,15 @@ profile:
 
 
 class TestCustomEnumOnFreeAttribute:
-    """datatype.custom-enum-on-free-attribute"""
+    """Profiles may tighten free-typed attributes with custom values.
 
-    def test_custom_values_on_free_attr(self) -> None:
-        # 'class' on <article> is a free string — not enum-typed
+    Previously this emitted an INFO diagnostic; now it should produce
+    *no* diagnostic at all (tightening is normal profile behaviour).
+    """
+
+    def test_custom_values_on_free_attr_no_diagnostic(self) -> None:
+        # 'class' on <article> is a free string — not enum-typed.
+        # Adding custom values is valid profile tightening → no error.
         yaml = """\
 profile:
   elements:
@@ -58,5 +63,5 @@ profile:
           values: ["myClass"]
 """
         errors = validate_profile(yaml_text=yaml, schema=_schema)
-        info_rules = [e.rule_id for e in errors if e.severity == Severity.INFO]
-        assert "datatype.custom-enum-on-free-attribute" in info_rules
+        datatype_rules = [e.rule_id for e in errors if e.rule_id.startswith("datatype.")]
+        assert len(datatype_rules) == 0

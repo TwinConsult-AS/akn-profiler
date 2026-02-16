@@ -93,28 +93,9 @@ def _check_attribute_values(
                                 line=line_index.get(val_path),
                             )
                         )
-            else:
-                # The attribute is not enum-typed — the profile is
-                # inventing an enum restriction.  This is valid
-                # (profiles *tighten* the schema) but we issue an
-                # informational note so the author knows the XSD
-                # itself does not constrain these values.
-                errors.append(
-                    ValidationError(
-                        rule_id="datatype.custom-enum-on-free-attribute",
-                        path=f"{attr_path}.values",
-                        message=(
-                            f"Attribute '{attr_name}' on <{elem_name}> "
-                            f"is not enum-typed in the XSD. The "
-                            f"profile adds a custom value restriction "
-                            f"[{', '.join(attr_restriction.values)}] — "
-                            f"this is valid but not verifiable against "
-                            f"the schema."
-                        ),
-                        severity=Severity.INFO,
-                        line=line_index.get(f"{attr_path}.values"),
-                    )
-                )
+            # else: the attribute is not enum-typed — the profile is
+            # inventing an enum restriction.  This is perfectly valid
+            # (profiles *tighten* the schema) so no diagnostic is needed.
 
             # --- Pattern check --------------------------------------
             _check_pattern(

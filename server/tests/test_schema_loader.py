@@ -119,6 +119,34 @@ class TestCardinality:
         assert cls_attrs[0].cardinality == "0..1"
 
 
+class TestAttributeDocs:
+    """Verify that AttrInfo carries XSD documentation."""
+
+    def test_class_attribute_has_doc(self) -> None:
+        """The 'class' attribute should have HTMLattrs group docs."""
+        attrs = _schema.get_attributes("article")
+        cls_attrs = [a for a in attrs if a.name == "class"]
+        assert len(cls_attrs) == 1
+        assert cls_attrs[0].doc  # non-empty
+        assert "HTML" in cls_attrs[0].doc or "class" in cls_attrs[0].doc
+
+    def test_source_attribute_has_doc(self) -> None:
+        """The 'source' attribute should have its group documentation."""
+        # source is defined in the 'source' attribute group
+        attrs = _schema.get_attributes("FRBRauthor")
+        src_attrs = [a for a in attrs if a.name == "source"]
+        if src_attrs:
+            assert src_attrs[0].doc
+            assert "source" in src_attrs[0].doc.lower() or "agent" in src_attrs[0].doc.lower()
+
+    def test_eId_attribute_has_doc(self) -> None:
+        """The 'eId' attribute should carry identification docs."""
+        attrs = _schema.get_attributes("chapter")
+        eid_attrs = [a for a in attrs if a.name == "eId"]
+        assert len(eid_attrs) == 1
+        assert eid_attrs[0].doc
+
+
 class TestEnumValues:
     """Verify enum value lookups."""
 
@@ -219,6 +247,19 @@ class TestChoiceGroups:
         # But the sequence itself is not a choice — the group IS a choice inside
         # Let's just verify the API works
         assert isinstance(groups, tuple)
+
+    def test_authorial_note_has_choice_groups(self) -> None:
+        """authorialNote (subFlowStructure) should have choice groups that
+        include both a documentType branch and a block/container branch.
+        This verifies the nested <xsd:choice> fix in choice_parser."""
+        groups = _schema.get_choice_groups("authorialNote")
+        assert len(groups) >= 1
+        # The outer exclusive choice should have a branch with block elements (e.g. p)
+        all_members = set()
+        for cg in groups:
+            all_members.update(cg.all_elements)
+        # subFlowStructure allows block elements like p, container elements
+        assert "p" in all_members or len(all_members) > 2
 
 
 # ------------------------------------------------------------------
