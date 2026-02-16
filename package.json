@@ -2,7 +2,7 @@
   "name": "akn-profiler",
   "displayName": "AKN Profiler",
   "description": "VS Code extension for writing YAML application profiles that restrict the Akoma Ntoso (AKN) XML schema. Provides autocomplete, inline suggestions, and automatic generation of minimum viable profiles.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "TwinConsultAS",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "icon.png",
@@ -57,27 +57,42 @@
     "commands": [
       {
         "command": "akn-profiler.newProfile",
-        "title": "AKN: New Profile",
+        "title": "New Profile",
         "category": "AKN Profiler"
       },
       {
         "command": "akn-profiler.expandElement",
-        "title": "AKN: Cascade Add Element",
+        "title": "Cascade Add Element",
         "category": "AKN Profiler"
       },
       {
         "command": "akn-profiler.collapseElement",
-        "title": "AKN: Cascade Remove Element",
+        "title": "Cascade Remove Element",
         "category": "AKN Profiler"
       },
       {
         "command": "akn-profiler.cursorToLine",
-        "title": "AKN: Position Cursor",
+        "title": "Position Cursor",
         "category": "AKN Profiler"
       },
       {
         "command": "akn-profiler.insertScaffold",
-        "title": "AKN: Initialize Profile Scaffold",
+        "title": "Initialize Profile Scaffold",
+        "category": "AKN Profiler"
+      },
+      {
+        "command": "akn-profiler.reorderProfile",
+        "title": "Reorder Profile",
+        "category": "AKN Profiler"
+      },
+      {
+        "command": "akn-profiler.addIdentityAttributes",
+        "title": "Add Identity Attributes",
+        "category": "AKN Profiler"
+      },
+      {
+        "command": "akn-profiler.removeIdentityAttributes",
+        "title": "Remove Identity Attributes",
         "category": "AKN Profiler"
       }
     ],
@@ -104,6 +119,18 @@
         {
           "command": "akn-profiler.insertScaffold",
           "when": "false"
+        },
+        {
+          "command": "akn-profiler.reorderProfile",
+          "when": "editorLangId == akn-profile"
+        },
+        {
+          "command": "akn-profiler.addIdentityAttributes",
+          "when": "editorLangId == akn-profile"
+        },
+        {
+          "command": "akn-profiler.removeIdentityAttributes",
+          "when": "editorLangId == akn-profile"
         }
       ]
     },
@@ -189,6 +216,26 @@
             "3.0"
           ],
           "description": "Akoma Ntoso schema version to use."
+        },
+        "aknProfiler.identity.autoAddEId": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically include the eId attribute on elements that support it when autocompleting or adding elements."
+        },
+        "aknProfiler.identity.autoAddWId": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically include the wId (work-level ID) attribute on elements that support it when autocompleting or adding elements."
+        },
+        "aknProfiler.identity.autoAddGUID": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically include the GUID attribute on elements that support it when autocompleting or adding elements."
+        },
+        "aknProfiler.identity.defaultRequired": {
+          "type": "boolean",
+          "default": true,
+          "description": "Default value for the 'required' field when auto-adding identity attributes (eId, wId, GUID). When true, auto-added identity attributes are marked as required."
         }
       }
     }

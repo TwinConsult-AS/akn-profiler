@@ -8,7 +8,7 @@ Author [YAML application profiles](http://docs.oasis-open.org/legaldocml/akn-cor
 
 ### New Profile Wizard
 
-Run `AKN: New Profile` from the command palette, pick a document type, and get a complete skeleton with every required element, attribute, and cardinality pre-filled — ready to edit.
+Run `AKN Profiler: New Profile` from the command palette, pick a document type, and get a complete skeleton with every required element, attribute, and cardinality pre-filled — ready to edit.
 
 ![New Profile wizard](images/new-profile-wizard.png)
 
@@ -39,6 +39,8 @@ Diagnostics come with one-click fixes — typo correction, scaffold insertion, c
 ### And More
 
 - **Cascade expand / collapse** — add an element with its full required-child chain, or remove one and clean up orphans, with diff preview
+- **Reorder Profile** — `AKN Profiler: Reorder Profile` command sorts elements topologically (parents before children, alphabetical tiebreaking), children by XSD sequence order, and attributes by XSD field order
+- **Identity attribute management** — `Add Identity Attributes` and `Remove Identity Attributes` commands to batch-add or batch-remove `eId`, `wId`, and `GUID` across the entire profile; per-attribute auto-add settings for automatic inclusion on new elements
 - **Profile notes** — annotate elements with `profileNote:` for design rationale, local terminology, or usage context
 - **Choice groups** — `choice:` blocks for mutually exclusive child branches, validated and cross-checked against `children:`
 - **Semantic highlighting** — distinct token colors for element names (teal), attribute names (yellow), structural keywords (pink), enum values (brown), child/choice references (light blue), cardinality (green), and booleans (blue bold)
@@ -57,12 +59,20 @@ The extension automatically creates a `.venv` and installs the language server o
 |---|---|---|
 | `aknProfiler.server.pythonPath` | `"python"` | Python interpreter used to run the language server |
 | `aknProfiler.schema.version` | `"3.0"` | Akoma Ntoso schema version (currently only 3.0) |
+| `aknProfiler.identity.autoAddEId` | `true` | Automatically include `eId` on elements that support it when expanding or creating elements |
+| `aknProfiler.identity.autoAddWId` | `true` | Automatically include `wId` on elements that support it when expanding or creating elements |
+| `aknProfiler.identity.autoAddGUID` | `false` | Automatically include `GUID` on elements that support it when expanding or creating elements |
+| `aknProfiler.identity.defaultRequired` | `true` | Default value for the `required` field when auto-adding identity attributes (eId, wId, GUID). When true, auto-added identity attributes are marked as required |
 
 ## Known Issues
 
 No known issues. If you encounter a problem, please [open an issue](https://github.com/TwinConsult-AS/akn-profiler/issues).
 
 ## Release Notes
+
+### 0.1.4
+
+Added "Reorder Profile" command for canonical element/child/attribute ordering, "Add/Remove Identity Attributes" commands with required/optional picker for eId/wId/GUID, per-attribute auto-add settings (defaulting to true for eId/wId), `defaultRequired` setting, canonical element placement on quick-fix define, and fixed duplicate "AKN" prefix in command palette names. The "New Profile" command now generates a full minimal viable profile (matching the scaffold button) instead of a bare skeleton.
 
 ### 0.1.3
 

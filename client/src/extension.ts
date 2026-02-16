@@ -158,6 +158,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
   registerCascadeCommands(context);
   registerCursorToLineCommand(context);
   registerInsertNewLineAndSuggestCommand(context);
+  registerReorderProfileCommand(context);
+  registerIdentityAttributeCommands(context);
 
   // Resolve Python interpreter path from settings
   const config = workspace.getConfiguration("aknProfiler");
@@ -200,6 +202,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
   // Build LanguageClientOptions for .akn.yaml documents
   const schemaVersion = workspace.getConfiguration("aknProfiler").get<string>("schema.version", "3.0");
+  const identityConfig = workspace.getConfiguration("aknProfiler.identity");
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { scheme: "file", language: "akn-profile" },
@@ -212,6 +215,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
     outputChannel: outputChannel,
     initializationOptions: {
       schemaVersion,
+      autoAddEId: identityConfig.get<boolean>("autoAddEId", true),
+      autoAddWId: identityConfig.get<boolean>("autoAddWId", true),
+      autoAddGUID: identityConfig.get<boolean>("autoAddGUID", false),
+      defaultRequired: identityConfig.get<boolean>("defaultRequired", true),
     },
   };
 
@@ -372,16 +379,23 @@ function registerNewProfileCommand(context: ExtensionContext): void {
           return; // User cancelled
         }
 
-        // Ask the server for the snippet scaffold
-        const snippet: string = await client.sendRequest(
+        // Ask the server for the full minimal viable profile
+        const fullProfile: string = await client.sendRequest(
           "workspace/executeCommand",
-          { command: "akn.generateSnippet", arguments: [selected] }
+          { command: "akn.initializeProfile", arguments: [selected] }
         );
 
-        if (!snippet) {
-          window.showWarningMessage("Could not generate profile scaffold.");
+        if (!fullProfile) {
+          window.showWarningMessage("Could not generate profile.");
           return;
         }
+
+        // Convert the empty metadata placeholders into snippet tab-stops
+        // so the user can tab through name, version, and description
+        const snippet = fullProfile
+          .replace(/^(  name: )""/m, '$1"${1:Profile Name}"')
+          .replace(/^(  version: )""/m, '$1"${2:1.0}"')
+          .replace(/^(  description: )""/m, '$1"${3:Description}"');
 
         // Open a new untitled document with the akn-profile language
         const doc = await workspace.openTextDocument({
@@ -390,7 +404,7 @@ function registerNewProfileCommand(context: ExtensionContext): void {
         });
         const editor = await window.showTextDocument(doc);
 
-        // Insert the snippet (with tab-stop support)
+        // Insert as a snippet so tab-stop navigation works
         await editor.insertSnippet(new SnippetString(snippet));
 
         outputChannel.appendLine(
@@ -583,6 +597,232 @@ function registerInsertNewLineAndSuggestCommand(
   outputChannel.appendLine(
     'Registered command: "akn-profiler.insertNewLineAndSuggest"'
   );
+}
+
+// ------------------------------------------------------------------
+// "Reorder Profile" command
+// ------------------------------------------------------------------
+
+function registerReorderProfileCommand(context: ExtensionContext): void {
+  const disposable = commands.registerCommand(
+    "akn-profiler.reorderProfile",
+    async () => {
+      if (!client) {
+        window.showErrorMessage("AKN Profiler language server is not running.");
+        return;
+      }
+
+      const editor = window.activeTextEditor;
+      if (!editor || !isAknProfile(editor.document)) {
+        window.showWarningMessage("Open an .akn.yaml file first.");
+        return;
+      }
+
+      try {
+        const result: { newText: string } = await client.sendRequest(
+          "workspace/executeCommand",
+          {
+            command: "akn.reorderProfile",
+            arguments: [editor.document.uri.toString()],
+          }
+        );
+
+        if (!result?.newText || result.newText === editor.document.getText()) {
+          window.showInformationMessage("Profile is already in canonical order.");
+          return;
+        }
+
+        // Apply the reordered text directly
+        const lastLine = editor.document.lineCount - 1;
+        const fullRange = new Range(
+          new VPosition(0, 0),
+          editor.document.lineAt(lastLine).range.end
+        );
+
+        await editor.edit((editBuilder) => {
+          editBuilder.replace(fullRange, result.newText);
+        });
+
+        window.showInformationMessage("Profile reordered successfully.");
+        outputChannel.appendLine("Profile reordered.");
+      } catch (err) {
+        outputChannel.appendLine(`Reorder profile error: ${err}`);
+        window.showErrorMessage(`Failed to reorder profile: ${err}`);
+      }
+    }
+  );
+
+  context.subscriptions.push(disposable);
+  outputChannel.appendLine('Registered command: "akn-profiler.reorderProfile"');
+}
+
+// ------------------------------------------------------------------
+// Identity attribute commands (Add / Remove)
+// ------------------------------------------------------------------
+
+const IDENTITY_ATTR_OPTIONS = [
+  {
+    label: "eId",
+    description: "Expression-level identifier — identifies the element absolutely",
+    detail: "Required on idreq types, optional on idopt types. Pattern: [^\\s]+",
+  },
+  {
+    label: "wId",
+    description: "Work-level identifier — marks the ID from the original version",
+    detail: "Only needed when renumbering occurred. Always optional. Pattern: [^\\s]+",
+  },
+  {
+    label: "GUID",
+    description: "Globally unique identifier",
+    detail: "Always optional. Pattern: [^\\s]+",
+  },
+];
+
+function registerIdentityAttributeCommands(context: ExtensionContext): void {
+  // Add Identity Attributes
+  const addDisposable = commands.registerCommand(
+    "akn-profiler.addIdentityAttributes",
+    async () => {
+      if (!client) {
+        window.showErrorMessage("AKN Profiler language server is not running.");
+        return;
+      }
+
+      const editor = window.activeTextEditor;
+      if (!editor || !isAknProfile(editor.document)) {
+        window.showWarningMessage("Open an .akn.yaml file first.");
+        return;
+      }
+
+      const selected = await window.showQuickPick(IDENTITY_ATTR_OPTIONS, {
+        placeHolder: "Select identity attributes to add to all supporting elements",
+        title: "Add Identity Attributes",
+        canPickMany: true,
+      });
+
+      if (!selected || selected.length === 0) {
+        return;
+      }
+
+      const attrNames = selected.map((s) => s.label);
+
+      // Ask the user whether to initialize as required or optional
+      const requiredChoice = await window.showQuickPick(
+        [
+          { label: "Required", description: "Initialize attributes with required: true", picked: true },
+          { label: "Optional", description: "Initialize attributes with required: false" },
+        ],
+        {
+          placeHolder: "Initialize attributes as required or optional?",
+          title: "Attribute Required",
+        }
+      );
+
+      if (!requiredChoice) {
+        return;
+      }
+
+      const asRequired = requiredChoice.label === "Required";
+
+      try {
+        const result: { newText: string } = await client.sendRequest(
+          "workspace/executeCommand",
+          {
+            command: "akn.addIdentityAttributes",
+            arguments: [editor.document.uri.toString(), attrNames, asRequired],
+          }
+        );
+
+        if (!result?.newText || result.newText === editor.document.getText()) {
+          window.showInformationMessage("No changes needed — attributes already present.");
+          return;
+        }
+
+        const lastLine = editor.document.lineCount - 1;
+        const fullRange = new Range(
+          new VPosition(0, 0),
+          editor.document.lineAt(lastLine).range.end
+        );
+
+        await editor.edit((editBuilder) => {
+          editBuilder.replace(fullRange, result.newText);
+        });
+
+        window.showInformationMessage(
+          `Added ${attrNames.join(", ")} to all supporting elements.`
+        );
+        outputChannel.appendLine(`Added identity attributes: ${attrNames.join(", ")}`);
+      } catch (err) {
+        outputChannel.appendLine(`Add identity attributes error: ${err}`);
+        window.showErrorMessage(`Failed to add identity attributes: ${err}`);
+      }
+    }
+  );
+
+  // Remove Identity Attributes
+  const removeDisposable = commands.registerCommand(
+    "akn-profiler.removeIdentityAttributes",
+    async () => {
+      if (!client) {
+        window.showErrorMessage("AKN Profiler language server is not running.");
+        return;
+      }
+
+      const editor = window.activeTextEditor;
+      if (!editor || !isAknProfile(editor.document)) {
+        window.showWarningMessage("Open an .akn.yaml file first.");
+        return;
+      }
+
+      const selected = await window.showQuickPick(IDENTITY_ATTR_OPTIONS, {
+        placeHolder: "Select identity attributes to remove from all elements",
+        title: "Remove Identity Attributes",
+        canPickMany: true,
+      });
+
+      if (!selected || selected.length === 0) {
+        return;
+      }
+
+      const attrNames = selected.map((s) => s.label);
+
+      try {
+        const result: { newText: string } = await client.sendRequest(
+          "workspace/executeCommand",
+          {
+            command: "akn.removeIdentityAttributes",
+            arguments: [editor.document.uri.toString(), attrNames],
+          }
+        );
+
+        if (!result?.newText || result.newText === editor.document.getText()) {
+          window.showInformationMessage("No changes needed — attributes not present.");
+          return;
+        }
+
+        const lastLine = editor.document.lineCount - 1;
+        const fullRange = new Range(
+          new VPosition(0, 0),
+          editor.document.lineAt(lastLine).range.end
+        );
+
+        await editor.edit((editBuilder) => {
+          editBuilder.replace(fullRange, result.newText);
+        });
+
+        window.showInformationMessage(
+          `Removed ${attrNames.join(", ")} from all elements.`
+        );
+        outputChannel.appendLine(`Removed identity attributes: ${attrNames.join(", ")}`);
+      } catch (err) {
+        outputChannel.appendLine(`Remove identity attributes error: ${err}`);
+        window.showErrorMessage(`Failed to remove identity attributes: ${err}`);
+      }
+    }
+  );
+
+  context.subscriptions.push(addDisposable, removeDisposable);
+  outputChannel.appendLine("Registered identity attribute commands.");
 }
 
 async function showDiffPreview(

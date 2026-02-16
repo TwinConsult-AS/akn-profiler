@@ -5,6 +5,30 @@ All notable changes to the AKN Profiler extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] — 2026-02-16
+
+### Added
+
+- **Reorder Profile command** — new "AKN Profiler: Reorder Profile" command (`Ctrl+Shift+P`) reorders the entire profile into canonical order: elements follow a topological parent-before-child arrangement with alphabetical tiebreaking, children within each element follow XSD sequence order (required first), and attributes follow XSD field order (required first).
+- **Add Identity Attributes command** — new "AKN Profiler: Add Identity Attributes" command presents a multi-select picker for `eId`, `wId`, and `GUID`, followed by a "Required" or "Optional" picker to control the `required` field value. Selected attributes are added to every element in the profile that supports them per the XSD.
+- **Remove Identity Attributes command** — symmetric command to remove identity attributes from all elements (respects XSD-required attributes — won't remove attributes that are mandatory).
+- **Identity attribute auto-add settings** — four new VS Code settings: `aknProfiler.identity.autoAddEId` (default `true`), `aknProfiler.identity.autoAddWId` (default `true`), `aknProfiler.identity.autoAddGUID` (default `false`), and `aknProfiler.identity.defaultRequired` (default `true`). These control which identity attributes are automatically included when expanding elements via cascade add, scaffold initialization, or the New Profile wizard, and whether they're marked as required.
+- **Canonical element ordering on expand** — when using quick-fix "Define element" or cascade add, new elements are now placed in logical topological order (parents before children, alphabetical tiebreaking) instead of being appended at the bottom.
+
+### Changed
+
+- **New Profile command generates full profile** — the "New Profile" wizard now produces a complete minimal viable profile with all required elements, children, and attributes, matching the "Initialize Profile Scaffold" button. Previously it only generated a bare skeleton that required manual expansion via quick-fixes.
+- **Completion sort order** — children and attributes in autocomplete dropdowns continue to sort required-first then alphabetically, consistent with the new canonical ordering used throughout.
+
+### Fixed
+
+- **Duplicate "AKN" in command palette** — all command titles no longer include the redundant `AKN:` prefix, since the category `AKN Profiler` already provides it. Commands now display as "AKN Profiler: New Profile" instead of "AKN Profiler: AKN: New Profile".
+- **Stale server version string** — `LanguageServer` version updated from `v0.1.2` to `v0.1.4`.
+
+### Infrastructure
+
+- Test suite expanded with new coverage for element ordering, reorder command, identity attribute add/remove, and auto-add settings.
+
 ## [0.1.3] — 2026-02-16
 
 ### Fixed
@@ -93,6 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `@vscode/vsce` and `esbuild` as dev dependencies.
 - Applied `ruff` auto-fixes across the Python codebase.
 
+[0.1.4]: https://github.com/TwinConsult-AS/akn-profiler/releases/tag/v0.1.4
 [0.1.3]: https://github.com/TwinConsult-AS/akn-profiler/releases/tag/v0.1.3
 [0.1.2]: https://github.com/TwinConsult-AS/akn-profiler/releases/tag/v0.1.2
 [0.1.1]: https://github.com/TwinConsult-AS/akn-profiler/releases/tag/v0.1.1

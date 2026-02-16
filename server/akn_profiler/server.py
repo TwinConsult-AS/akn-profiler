@@ -79,7 +79,12 @@ from lsprotocol.types import (
 )
 from pygls.lsp.server import LanguageServer
 
-from akn_profiler.models.cascade import _ProfileDumper, collapse_element, expand_element
+from akn_profiler.models.cascade import (
+    _ProfileDumper,
+    collapse_element,
+    expand_element,
+    reorder_profile,
+)
 from akn_profiler.models.snippet_generator import generate_snippet, get_document_types
 from akn_profiler.validation.engine import validate_profile
 from akn_profiler.validation.errors import Severity, ValidationError
@@ -94,11 +99,17 @@ logging.basicConfig(
 logger = logging.getLogger("akn_profiler")
 
 # Create the language server instance
-server = LanguageServer("akn-profiler", "v0.1.2")
+server = LanguageServer("akn-profiler", "v0.1.4")
 
 
 # Module-level schema instance — populated during initialize
 akn_schema: AknSchema | None = None
+
+# Identity attribute auto-add settings (populated from client config)
+_auto_add_eid: bool = True
+_auto_add_wid: bool = True
+_auto_add_guid: bool = False
+_auto_id_required: bool = True
 
 # Type variable for decorator
 _T = TypeVar("_T")
@@ -128,7 +139,7 @@ def _safe_handler(fallback: _T) -> Callable:
 @server.feature("initialize")
 def initialize(params: InitializeParams) -> None:
     """Handle the initialize request from the client."""
-    global akn_schema
+    global akn_schema, _auto_add_eid, _auto_add_wid, _auto_add_guid, _auto_id_required
     logger.info("AKN Profiler language server initializing...")
     logger.info(f"Client: {params.client_info}")
     logger.info(f"Root URI: {params.root_uri}")
@@ -137,7 +148,15 @@ def initialize(params: InitializeParams) -> None:
     schema_version = "3.0"
     if params.initialization_options and isinstance(params.initialization_options, dict):
         schema_version = params.initialization_options.get("schemaVersion", "3.0")
+        # Read identity attribute auto-add settings
+        _auto_add_eid = bool(params.initialization_options.get("autoAddEId", True))
+        _auto_add_wid = bool(params.initialization_options.get("autoAddWId", True))
+        _auto_add_guid = bool(params.initialization_options.get("autoAddGUID", False))
+        _auto_id_required = bool(params.initialization_options.get("defaultRequired", True))
     logger.info(f"Schema version: {schema_version}")
+    logger.info(
+        f"Identity auto-add: eId={_auto_add_eid}, wId={_auto_add_wid}, GUID={_auto_add_guid}, required={_auto_id_required}"
+    )
 
     # Phase 1: Load the AKN XSD schema (currently only 3.0 is supported)
     akn_schema = AknSchema.load()
@@ -1220,7 +1239,15 @@ def _build_cascade_add_edit(uri: str, source: str, element_name: str) -> Workspa
     if akn_schema is None or not akn_schema.has_element(element_name):
         return None
 
-    new_text = expand_element(source, element_name, akn_schema)
+    new_text = expand_element(
+        source,
+        element_name,
+        akn_schema,
+        auto_add_eid=_auto_add_eid,
+        auto_add_wid=_auto_add_wid,
+        auto_add_guid=_auto_add_guid,
+        auto_id_required=_auto_id_required,
+    )
     if new_text == source:
         return None  # nothing to change
 
@@ -2047,7 +2074,15 @@ def cmd_initialize_profile(doc_type: str = "act") -> str:
     )
 
     # 2. Recursively expand the selected document type
-    return expand_element(scaffold, doc_type, akn_schema)
+    return expand_element(
+        scaffold,
+        doc_type,
+        akn_schema,
+        auto_add_eid=_auto_add_eid,
+        auto_add_wid=_auto_add_wid,
+        auto_add_guid=_auto_add_guid,
+        auto_id_required=_auto_id_required,
+    )
 
 
 @server.command("akn.generateSnippet")
@@ -2079,7 +2114,15 @@ def cmd_expand_element(uri: str = "", elem_name: str = "") -> dict:
         return {"newText": ""}
 
     doc = server.workspace.get_text_document(uri)
-    new_text = expand_element(doc.source, elem_name, akn_schema)
+    new_text = expand_element(
+        doc.source,
+        elem_name,
+        akn_schema,
+        auto_add_eid=_auto_add_eid,
+        auto_add_wid=_auto_add_wid,
+        auto_add_guid=_auto_add_guid,
+        auto_id_required=_auto_id_required,
+    )
     return {"newText": new_text}
 
 
@@ -2101,3 +2144,178 @@ def cmd_collapse_element(uri: str = "", elem_name: str = "") -> dict:
     doc = server.workspace.get_text_document(uri)
     new_text = collapse_element(doc.source, elem_name, akn_schema)
     return {"newText": new_text}
+
+
+@server.command("akn.reorderProfile")
+def cmd_reorder_profile(uri: str = "") -> dict:
+    """Reorder all elements, children, and attributes in the profile.
+
+    Returns a dict ``{"newText": "..."}`` with the reordered YAML text.
+    """
+    if akn_schema is None:
+        return {"newText": ""}
+    if not uri:
+        return {"newText": ""}
+
+    doc = server.workspace.get_text_document(uri)
+    new_text = reorder_profile(doc.source, akn_schema)
+    return {"newText": new_text}
+
+
+@server.command("akn.addIdentityAttributes")
+def cmd_add_identity_attributes(
+    uri: str = "", attr_names: list[str] | None = None, as_required: bool = True
+) -> dict:
+    """Add identity attributes (eId, wId, GUID) to all supporting elements.
+
+    Args:
+        uri: document URI
+        attr_names: list of attribute names to add (e.g. ["eId", "wId"])
+        as_required: if True, initialize attributes with ``required: true``
+
+    Returns a dict ``{"newText": "..."}`` with the modified YAML text.
+    """
+    if akn_schema is None or not uri or not attr_names:
+        return {"newText": ""}
+
+    doc = server.workspace.get_text_document(uri)
+    new_text = _add_identity_attrs_to_profile(doc.source, attr_names, as_required=as_required)
+    return {"newText": new_text}
+
+
+@server.command("akn.removeIdentityAttributes")
+def cmd_remove_identity_attributes(uri: str = "", attr_names: list[str] | None = None) -> dict:
+    """Remove identity attributes (eId, wId, GUID) from all elements.
+
+    Args:
+        uri: document URI
+        attr_names: list of attribute names to remove (e.g. ["eId", "wId"])
+
+    Returns a dict ``{"newText": "..."}`` with the modified YAML text.
+    """
+    if akn_schema is None or not uri or not attr_names:
+        return {"newText": ""}
+
+    doc = server.workspace.get_text_document(uri)
+    new_text = _remove_identity_attrs_from_profile(doc.source, attr_names)
+    return {"newText": new_text}
+
+
+# ------------------------------------------------------------------
+# Identity attribute helpers
+# ------------------------------------------------------------------
+
+_IDENTITY_ATTRS = {"eId", "wId", "GUID"}
+
+
+def _add_identity_attrs_to_profile(
+    source: str, attr_names: list[str], *, as_required: bool = True
+) -> str:
+    """Add specified identity attributes to all elements that support them.
+
+    Args:
+        source: YAML profile text
+        attr_names: identity attribute names to add
+        as_required: if True, set ``required: true``; otherwise ``required: false``
+    """
+    if akn_schema is None:
+        return source
+
+    raw = yaml.safe_load(source)
+    if not isinstance(raw, dict) or "profile" not in raw:
+        return source
+
+    profile = raw["profile"]
+    if not isinstance(profile, dict):
+        return source
+
+    elements = profile.get("elements")
+    if not isinstance(elements, dict):
+        return source
+
+    from akn_profiler.models.cascade import _dump
+    from akn_profiler.models.cascade import reorder_attributes as _reorder_attrs
+
+    for ename, edata in elements.items():
+        info = akn_schema.get_element_info(ename)
+        if info is None:
+            continue
+
+        supported_attrs = {a.name for a in info.attributes}
+        attrs_to_add = [a for a in attr_names if a in supported_attrs and a in _IDENTITY_ATTRS]
+        if not attrs_to_add:
+            continue
+
+        if edata is None:
+            edata = {}
+            elements[ename] = edata
+        if not isinstance(edata, dict):
+            continue
+
+        attrs_dict = edata.get("attributes")
+        if attrs_dict is None:
+            attrs_dict = {}
+            edata["attributes"] = attrs_dict
+        if not isinstance(attrs_dict, dict):
+            continue
+
+        for attr_name in attrs_to_add:
+            if attr_name not in attrs_dict:
+                attrs_dict[attr_name] = {"required": as_required}
+
+    # Reorder attributes to maintain consistent order
+    for ename, edata in elements.items():
+        if (
+            isinstance(edata, dict)
+            and "attributes" in edata
+            and isinstance(edata["attributes"], dict)
+        ):
+            edata["attributes"] = _reorder_attrs(edata["attributes"], ename, akn_schema)
+
+    return _dump(raw)
+
+
+def _remove_identity_attrs_from_profile(source: str, attr_names: list[str]) -> str:
+    """Remove specified identity attributes from all elements."""
+    if akn_schema is None:
+        return source
+
+    raw = yaml.safe_load(source)
+    if not isinstance(raw, dict) or "profile" not in raw:
+        return source
+
+    profile = raw["profile"]
+    if not isinstance(profile, dict):
+        return source
+
+    elements = profile.get("elements")
+    if not isinstance(elements, dict):
+        return source
+
+    from akn_profiler.models.cascade import _dump
+
+    for ename, edata in elements.items():
+        if not isinstance(edata, dict):
+            continue
+        attrs_dict = edata.get("attributes")
+        if not isinstance(attrs_dict, dict):
+            continue
+
+        info = akn_schema.get_element_info(ename)
+        for attr_name in attr_names:
+            if attr_name not in _IDENTITY_ATTRS:
+                continue
+            if attr_name not in attrs_dict:
+                continue
+            # Don't remove if XSD-required
+            if info:
+                attr_info = next((a for a in info.attributes if a.name == attr_name), None)
+                if attr_info and attr_info.required:
+                    continue
+            del attrs_dict[attr_name]
+
+        # Clean up empty attributes section
+        if not attrs_dict:
+            del edata["attributes"]
+
+    return _dump(raw)
