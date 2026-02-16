@@ -5,6 +5,27 @@ All notable changes to the AKN Profiler extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] — 2026-02-16
+
+### Added
+
+- **Profile notes** — new `profileNote` key on element entries for curator annotations (e.g. mapping to local terminology, design rationale). Informational only — does not affect validation.
+- **"Add profile note" lightbulb** — code action inserts `profileNote: ""` as the first sub-key under an element and positions the cursor for typing.
+- Auto-completion and hover documentation for `profileNote`.
+
+### Fixed
+
+- **Semantic token coloring** — attribute names under `attributes:` (e.g. `name`, `version`, `description`) now correctly render as Property (yellow) instead of Keyword (pink). Element names in `choice:` branches now render as Type (light blue) with cardinality highlighting.
+- **Boolean highlighting** — `true`/`false` values on `required:` lines now render as Macro (blue bold) instead of being uncolored.
+- **Hover on `profileNote`** — hovering the `profileNote` key now shows its dedicated documentation instead of the parent element's XSD doc.
+- **Lightbulb scope** — "Add child", "Add attribute", and "Add profile note" lightbulbs are now visible when the cursor is on a `profileNote` line.
+- **Lightbulb ordering** — code actions now appear in a consistent order: choice → children → attribute → profile note.
+- **No spurious completion popup** — the "Add profile note" code action no longer triggers a completion dropdown after insertion.
+
+### Infrastructure
+
+- Test suite expanded to 296 tests, including 34 new semantic token tests.
+
 ## [0.1.1] — 2026-02-15
 
 ### Added
@@ -60,5 +81,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `@vscode/vsce` and `esbuild` as dev dependencies.
 - Applied `ruff` auto-fixes across the Python codebase.
 
+[0.1.2]: https://github.com/TwinConsult-AS/akn-profiler/releases/tag/v0.1.2
 [0.1.1]: https://github.com/TwinConsult-AS/akn-profiler/releases/tag/v0.1.1
 [0.1.0]: https://github.com/TwinConsult-AS/akn-profiler/releases/tag/v0.1.0

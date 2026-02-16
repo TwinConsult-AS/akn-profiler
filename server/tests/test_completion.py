@@ -121,3 +121,35 @@ class TestElementCompletionData:
         doc_types = schema.get_children("akomaNtoso")
         assert "act" in doc_types
         assert "bill" in doc_types
+
+
+class TestProfileNoteCompletion:
+    """profileNote should be offered in element body scope."""
+
+    DOC_WITH_ELEMENT = (
+        "profile:\n"  # 0
+        "  elements:\n"  # 1
+        "    act:\n"  # 2
+        "      \n"  # 3  ← blank line in element body
+    )
+
+    def test_element_body_includes_profile_note(self) -> None:
+        ctx = resolve_context(self.DOC_WITH_ELEMENT, 3, 6)
+        assert ctx.scope == Scope.ELEMENT_BODY
+        # profileNote should be in the existing_keys exclusion path,
+        # and offered by the completion handler since it's in
+        # _ELEMENT_BODY_KEYS.
+        assert "profileNote" not in ctx.existing_keys
+
+    DOC_WITH_NOTE = (
+        "profile:\n"  # 0
+        "  elements:\n"  # 1
+        "    act:\n"  # 2
+        '      profileNote: "test"\n'  # 3
+        "      \n"  # 4  ← blank line in element body
+    )
+
+    def test_profile_note_in_existing_keys(self) -> None:
+        ctx = resolve_context(self.DOC_WITH_NOTE, 4, 6)
+        assert ctx.scope == Scope.ELEMENT_BODY
+        assert "profileNote" in ctx.existing_keys

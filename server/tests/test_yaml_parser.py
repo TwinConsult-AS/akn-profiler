@@ -98,3 +98,44 @@ profile:
         _, _, index = parse_profile(yaml)
         assert index.get("profile.documentTypes[0]") is not None
         assert index.get("profile.documentTypes[1]") is not None
+
+
+class TestProfileNote:
+    """profileNote field parsing."""
+
+    def test_profile_note_parsed(self) -> None:
+        yaml = """\
+profile:
+  elements:
+    act:
+      profileNote: "Norwegian term: 'lov'"
+      children:
+        meta:
+"""
+        profile, errors, _ = parse_profile(yaml)
+        assert profile is not None
+        assert profile.elements["act"].profileNote == "Norwegian term: 'lov'"
+
+    def test_profile_note_default_empty(self) -> None:
+        yaml = """\
+profile:
+  elements:
+    act:
+      children:
+        meta:
+"""
+        profile, errors, _ = parse_profile(yaml)
+        assert profile is not None
+        assert profile.elements["act"].profileNote == ""
+
+    def test_profile_note_no_parse_errors(self) -> None:
+        yaml = """\
+profile:
+  elements:
+    act:
+      profileNote: "This is a note"
+"""
+        profile, errors, _ = parse_profile(yaml)
+        assert profile is not None
+        parse_errs = [e for e in errors if e.rule_id.startswith("parse.")]
+        assert parse_errs == []

@@ -37,4 +37,16 @@
 - [ ] Document type triggers "Define with required elements" lightbulb
 - [ ] Cascade generates all required elements
 - [ ] Add/remove child lightbulbs work on element children
+- [ ] `profileNote` completion appears in element body
+- [ ] "Add profile note" lightbulb appears when cursor is inside an element
+- [ ] Lightbulb inserts `profileNote: ""` as first sub-key, cursor between quotes
+- [ ] Lightbulb does not appear if `profileNote` already present
+- [ ] Hover on `profileNote` shows documentation
+- [ ] Profile with `profileNote` validates without errors
+- [ ] Cascade expand/collapse preserves existing `profileNote` entries
+- [ ] Attribute names under `attributes:` are yellow (Property), not pink
+- [ ] `name:` under `attributes:` has different color from `attributes:` keyword
+- [ ] Element names under `choice:` are light blue (Type) with green cardinality
+- [ ] `true`/`false` on `required:` lines are blue bold (Macro)
+- [ ] Structural keys (`profile`, `elements`, `children`, etc.) are pink (Keyword)
 - [ ] No errors in Debug Console or Output panel

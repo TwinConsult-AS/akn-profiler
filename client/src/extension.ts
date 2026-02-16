@@ -517,7 +517,7 @@ function registerCascadeCommands(context: ExtensionContext): void {
 function registerCursorToLineCommand(context: ExtensionContext): void {
   const disposable = commands.registerCommand(
     "akn-profiler.cursorToLine",
-    async (line: number, character: number) => {
+    async (line: number, character: number, triggerSuggest: boolean = true) => {
       const editor = window.activeTextEditor;
       if (!editor) {
         return;
@@ -532,7 +532,9 @@ function registerCursorToLineCommand(context: ExtensionContext): void {
       editor.revealRange(editor.selection);
 
       // Trigger the completion menu so the user can pick a value
-      await commands.executeCommand("editor.action.triggerSuggest");
+      if (triggerSuggest) {
+        await commands.executeCommand("editor.action.triggerSuggest");
+      }
     }
   );
 

@@ -94,7 +94,7 @@ logging.basicConfig(
 logger = logging.getLogger("akn_profiler")
 
 # Create the language server instance
-server = LanguageServer("akn-profiler", "v0.1.1")
+server = LanguageServer("akn-profiler", "v0.1.2")
 
 
 # Module-level schema instance — populated during initialize
@@ -230,7 +230,7 @@ def start_server() -> None:
 # ==================================================================
 
 _PROFILE_KEYS = ["name", "version", "description", "documentTypes", "elements"]
-_ELEMENT_BODY_KEYS = ["attributes", "children", "structure"]
+_ELEMENT_BODY_KEYS = ["profileNote", "attributes", "children", "structure"]
 _ATTRIBUTE_BODY_KEYS = ["required", "values"]
 
 
@@ -573,6 +573,8 @@ def _key_completion(label: str, detail: str, snippet: str) -> CompletionItem:
 
 def _element_body_snippet(key: str, element_name: str | None) -> str:
     """Return snippet text for a key inside an element body."""
+    if key == "profileNote":
+        return 'profileNote: "$1"\n'
     if key == "attributes":
         return "attributes:\n  $1:\n"
     if key == "children":
@@ -760,6 +762,13 @@ def hover(params: HoverParams) -> Hover | None:
             "Must be at least as strict as the XSD — setting `false` on an "
             "XSD-required attribute will emit an error."
         ),
+        "profileNote": (
+            "**profileNote** — Curator annotation for this element.\n\n"
+            "Explanatory text for readers of the profile and documentation "
+            "generators. Use it to record design rationale, mappings to local "
+            "terminology, or original-language terms.\n\n"
+            "Does **not** affect validation."
+        ),
     }
 
     if ctx.scope == Scope.PROFILE:
@@ -768,7 +777,11 @@ def hover(params: HoverParams) -> Hover | None:
             content = _PROFILE_KEY_DOCS[word]
 
     elif ctx.scope in (Scope.ELEMENT_NAME, Scope.ELEMENT_BODY) and ctx.element_name:
-        content = _element_doc(ctx.element_name)
+        word = _word_at(doc.source, params.position.line, params.position.character)
+        if word and word in _PROFILE_KEY_DOCS:
+            content = _PROFILE_KEY_DOCS[word]
+        else:
+            content = _element_doc(ctx.element_name)
 
     elif (
         ctx.scope in (Scope.ATTRIBUTE_NAME, Scope.ATTRIBUTE_BODY)
@@ -1159,6 +1172,7 @@ def _find_element_context(source: str, line: int) -> str | None:
         "values",
         "elements",
         "profile",
+        "profileNote",
         "documentTypes",
         "name",
         "version",
@@ -1399,6 +1413,7 @@ _PROFILE_KEYS = frozenset(
         "values",
         "elements",
         "profile",
+        "profileNote",
         "documentTypes",
         "name",
         "version",
@@ -1587,6 +1602,20 @@ def _add_item_actions(uri: str, source: str, cursor_line: int) -> list[CodeActio
         in_attributes = has_attributes and attributes_line <= cursor_line <= attributes_end
         in_structure = has_structure and structure_line <= cursor_line <= structure_end
 
+        # Detect profileNote line
+        profile_note_line = -1
+        has_profile_note = False
+        for i in range(eline + 1, eend + 1):
+            stripped_i = lines[i].strip()
+            if not stripped_i:
+                continue
+            ind_i = len(lines[i]) - len(stripped_i)
+            if ind_i == sub_indent and stripped_i.startswith("profileNote:"):
+                has_profile_note = True
+                profile_note_line = i
+                break
+        in_profile_note = has_profile_note and cursor_line == profile_note_line
+
         # Detect choice: block within children:
         choice_line = -1
         choice_end = -1
@@ -1604,6 +1633,7 @@ def _add_item_actions(uri: str, source: str, cursor_line: int) -> list[CodeActio
         # =============================================================
         # Cascading lightbulb actions — deeper scopes inherit parent
         # actions so "Add child" and "Add attribute" are always visible.
+        # Order: choice → children → attribute → profile note
         # =============================================================
 
         # --- Choice branch ---
@@ -1619,7 +1649,7 @@ def _add_item_actions(uri: str, source: str, cursor_line: int) -> list[CodeActio
             )
 
         # --- Add child (always visible inside element) ---
-        if in_children or in_choice or cursor_line == eline:
+        if in_children or in_choice or in_profile_note or cursor_line == eline:
             if has_children:
                 actions.append(
                     _make_add_action(
@@ -1642,7 +1672,7 @@ def _add_item_actions(uri: str, source: str, cursor_line: int) -> list[CodeActio
                 )
 
         # --- Add attribute (always visible inside element) ---
-        if in_attributes or in_children or in_choice or cursor_line == eline:
+        if in_attributes or in_children or in_choice or in_profile_note or cursor_line == eline:
             if has_attributes:
                 actions.append(
                     _make_add_action(
@@ -1663,6 +1693,35 @@ def _add_item_actions(uri: str, source: str, cursor_line: int) -> list[CodeActio
                         section_header="attributes:",
                     )
                 )
+
+        # --- Add profile note (always last) ---
+        if not has_profile_note:
+            padding = " " * sub_indent
+            insert_pos = Position(line=eline + 1, character=0)
+            note_text = f'{padding}profileNote: ""\n'
+            # Cursor between the quotes: sub_indent + len('profileNote: "')
+            cursor_col = sub_indent + 14
+            actions.append(
+                CodeAction(
+                    title=f"Add profile note to '{ename}'",
+                    kind=CodeActionKind.Refactor,
+                    edit=WorkspaceEdit(
+                        changes={
+                            uri: [
+                                TextEdit(
+                                    range=Range(start=insert_pos, end=insert_pos),
+                                    new_text=note_text,
+                                )
+                            ]
+                        }
+                    ),
+                    command=Command(
+                        title="Position cursor",
+                        command="akn-profiler.cursorToLine",
+                        arguments=[eline + 1, cursor_col, False],
+                    ),
+                )
+            )
 
         # --- Remove child under cursor ---
         if in_children:
@@ -1780,6 +1839,7 @@ _STRUCTURAL_KEYS = {
     "choice",
     "structure",
     "values",
+    "profileNote",
 }
 
 
@@ -1840,13 +1900,38 @@ def _build_semantic_tokens(source: str) -> list[int]:
             length = len(key)
             rest = key_m.group(3).strip()
 
-            if key in _STRUCTURAL_KEYS:
+            # Resolve parent context before classification
+            parent_section = section_stack[-1][1] if section_stack else ""
+
+            if parent_section == "attributes" and key not in ("required", "values"):
+                # Under attributes:, all keys except required/values are
+                # attribute names — Property (yellow), regardless of whether
+                # they also appear in _STRUCTURAL_KEYS or known_elements.
+                tokens.append((line_idx, col, length, 1, 0))
+            elif parent_section == "choice" and key in known_elements:
+                # Choice branch element — Type (light blue) + cardinality
+                tokens.append((line_idx, col, length, 5, 0))
+                if rest:
+                    comment_stripped = rest.split("#")[0].strip()
+                    card_m = _cardinality_re.match(comment_stripped)
+                    if card_m:
+                        card_val = card_m.group(1)
+                        card_start = line_text.find(card_val, col + length)
+                        if card_start >= 0:
+                            tokens.append((line_idx, card_start, len(card_val), 6, 0))
+            elif key in _STRUCTURAL_KEYS:
                 # Keyword token + track section
                 tokens.append((line_idx, col, length, 2, 0))
                 section_stack.append((indent, key))
+                # Also tokenize boolean value on required: lines
+                if key == "required" and rest:
+                    bool_val = rest.split("#")[0].strip()
+                    if bool_val in ("true", "false"):
+                        bool_start = line_text.find(bool_val, col + length)
+                        if bool_start >= 0:
+                            tokens.append((line_idx, bool_start, len(bool_val), 7, 0))
             elif key in known_elements:
                 # Determine context from section stack
-                parent_section = section_stack[-1][1] if section_stack else ""
                 if parent_section == "children":
                     # Child reference — distinct type (5 = Type)
                     tokens.append((line_idx, col, length, 5, 0))
@@ -1864,18 +1949,6 @@ def _build_semantic_tokens(source: str) -> list[int]:
                     # Top-level element definition — type 0 (class)
                     mod = 1 if _is_element_required_in_xsd(key) else 0
                     tokens.append((line_idx, col, length, 0, mod))
-            else:
-                parent_section = section_stack[-1][1] if section_stack else ""
-                if parent_section == "attributes":
-                    # Attribute name — type 1 (property)
-                    tokens.append((line_idx, col, length, 1, 0))
-                elif key == "required" and rest:
-                    # Boolean value after "required:" — type 7 (macro)
-                    bool_val = rest.split("#")[0].strip()
-                    if bool_val in ("true", "false"):
-                        bool_start = line_text.find(bool_val, col + length)
-                        if bool_start >= 0:
-                            tokens.append((line_idx, bool_start, len(bool_val), 7, 0))
             continue
 
         # Match list items: "- value" or "- value # comment"

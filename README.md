@@ -39,8 +39,9 @@ Diagnostics come with one-click fixes — typo correction, scaffold insertion, c
 ### And More
 
 - **Cascade expand / collapse** — add an element with its full required-child chain, or remove one and clean up orphans, with diff preview
+- **Profile notes** — annotate elements with `profileNote:` for design rationale, local terminology, or usage context
 - **Choice groups** — `choice:` blocks for mutually exclusive child branches, validated and cross-checked against `children:`
-- **Semantic highlighting** — distinct token colors for element names, attributes, keywords, enum values, cardinality, and booleans
+- **Semantic highlighting** — distinct token colors for element names (teal), attribute names (yellow), structural keywords (pink), enum values (brown), child/choice references (light blue), cardinality (green), and booleans (blue bold)
 - **Code lens** — one-click "Initialize Profile Scaffold" on empty `.akn.yaml` files
 
 ## Requirements
@@ -62,6 +63,10 @@ The extension automatically creates a `.venv` and installs the language server o
 No known issues. If you encounter a problem, please [open an issue](https://github.com/TwinConsult-AS/akn-profiler/issues).
 
 ## Release Notes
+
+### 0.1.2
+
+Added `profileNote` for curator annotations on elements — lightbulb action, completion, hover, and semantic highlighting. Fixed semantic token coloring so attribute names, choice branches, and booleans each get distinct colors.
 
 ### 0.1.1
 

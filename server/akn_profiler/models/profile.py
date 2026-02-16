@@ -87,6 +87,9 @@ class ElementRestriction(BaseModel):
         valid child of the previous one per the XSD.
     """
 
+    profileNote: str = ""
+    """Curator annotation — explanatory text for readers of the profile."""
+
     attributes: dict[str, AttributeRestriction] = Field(default_factory=dict)
     children: dict[str, str | None] = Field(default_factory=dict)
     """Allowed children (always-present). Key = child name, value = cardinality or None."""

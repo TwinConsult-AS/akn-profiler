@@ -185,6 +185,74 @@ profile:
 
 
 # ------------------------------------------------------------------
+# profileNote lightbulb
+# ------------------------------------------------------------------
+
+
+class TestProfileNoteActions:
+    SOURCE_NO_NOTE = """\
+profile:
+  name: "test"
+  version: "1.0"
+  documentTypes:
+    - act
+  elements:
+    act:
+      children:
+        meta:
+        body:
+"""
+
+    def test_offers_add_profile_note(self):
+        titles = _titles(self.SOURCE_NO_NOTE, cursor_line=6)
+        assert any("profile note" in t.lower() for t in titles)
+
+    def test_offers_add_profile_note_from_children(self):
+        titles = _titles(self.SOURCE_NO_NOTE, cursor_line=8)
+        assert any("profile note" in t.lower() for t in titles)
+
+    def test_title_mentions_element_name(self):
+        titles = _titles(self.SOURCE_NO_NOTE, cursor_line=6)
+        note_titles = [t for t in titles if "profile note" in t.lower()]
+        assert any("'act'" in t for t in note_titles)
+
+    SOURCE_WITH_NOTE = """\
+profile:
+  name: "test"
+  version: "1.0"
+  documentTypes:
+    - act
+  elements:
+    act:
+      profileNote: "Norwegian term: 'lov'"
+      children:
+        meta:
+        body:
+"""
+
+    def test_no_duplicate_when_note_exists(self):
+        titles = _titles(self.SOURCE_WITH_NOTE, cursor_line=7)
+        assert not any("profile note" in t.lower() for t in titles)
+
+    def test_no_duplicate_from_children_when_exists(self):
+        titles = _titles(self.SOURCE_WITH_NOTE, cursor_line=9)
+        assert not any("profile note" in t.lower() for t in titles)
+
+    SOURCE_BARE_ELEMENT = """\
+profile:
+  name: "test"
+  documentTypes:
+    - act
+  elements:
+    act:
+"""
+
+    def test_offers_note_on_bare_element(self):
+        titles = _titles(self.SOURCE_BARE_ELEMENT, cursor_line=5)
+        assert any("profile note" in t.lower() for t in titles)
+
+
+# ------------------------------------------------------------------
 # Element with existing attributes: block
 # ------------------------------------------------------------------
 

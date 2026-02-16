@@ -218,3 +218,106 @@ profile:
         errors = validate_profile(yaml, _schema)
         rule_ids = {e.rule_id for e in errors}
         assert "datatype.invalid-enum-value" in rule_ids
+
+
+class TestProfileNoteValidation:
+    """profileNote on elements should not cause any validation errors."""
+
+    PROFILE_WITH_NOTES = """\
+profile:
+  name: "With notes"
+  version: "1.0"
+  documentTypes:
+    - act
+  elements:
+    akomaNtoso:
+      profileNote: "Root element of all AKN documents"
+    act:
+      profileNote: "Norwegian term: 'lov'"
+      children:
+        meta:
+        body:
+    meta:
+      children:
+        identification:
+    identification:
+      profileNote: "Maps to the 'identifikasjon' concept"
+      attributes:
+        source:
+          required: true
+      children:
+        FRBRWork:
+        FRBRExpression:
+        FRBRManifestation:
+    FRBRWork:
+      children:
+        FRBRthis:
+        FRBRuri:
+        FRBRdate:
+        FRBRauthor:
+        FRBRcountry:
+    FRBRExpression:
+      children:
+        FRBRthis:
+        FRBRuri:
+        FRBRdate:
+        FRBRauthor:
+        FRBRlanguage:
+    FRBRManifestation:
+      children:
+        FRBRthis:
+        FRBRuri:
+        FRBRdate:
+        FRBRauthor:
+    FRBRthis:
+      attributes:
+        value:
+          required: true
+    FRBRuri:
+      attributes:
+        value:
+          required: true
+    FRBRdate:
+      attributes:
+        date:
+          required: true
+        name:
+          required: true
+    FRBRauthor:
+      attributes:
+        href:
+          required: true
+    FRBRcountry:
+      attributes:
+        value:
+          required: true
+    FRBRlanguage:
+      attributes:
+        language:
+          required: true
+    body:
+      children:
+        chapter:
+      structure:
+        - chapter
+        - article
+        - paragraph
+    chapter:
+"""
+
+    _USER_ACTION_RULES = {"choice.required-group-empty"}
+
+    def test_no_errors_with_notes(self) -> None:
+        errors = validate_profile(self.PROFILE_WITH_NOTES, _schema)
+        hard = [
+            e
+            for e in errors
+            if e.severity == Severity.ERROR and e.rule_id not in self._USER_ACTION_RULES
+        ]
+        assert hard == [], f"Unexpected errors: {hard}"
+
+    def test_notes_are_informational_only(self) -> None:
+        errors = validate_profile(self.PROFILE_WITH_NOTES, _schema)
+        # No errors should mention profileNote
+        note_errors = [e for e in errors if "profileNote" in e.message]
+        assert note_errors == []
