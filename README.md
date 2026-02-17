@@ -58,7 +58,6 @@ The extension automatically creates a `.venv` and installs the language server o
 | Setting | Default | Description |
 |---|---|---|
 | `aknProfiler.server.pythonPath` | `"python"` | Python interpreter used to run the language server |
-| `aknProfiler.schema.version` | `"3.0"` | Akoma Ntoso schema version (currently only 3.0) |
 | `aknProfiler.identity.autoAddEId` | `true` | Automatically include `eId` on elements that support it when expanding or creating elements |
 | `aknProfiler.identity.autoAddWId` | `true` | Automatically include `wId` on elements that support it when expanding or creating elements |
 | `aknProfiler.identity.autoAddGUID` | `false` | Automatically include `GUID` on elements that support it when expanding or creating elements |
@@ -69,6 +68,14 @@ The extension automatically creates a `.venv` and installs the language server o
 No known issues. If you encounter a problem, please [open an issue](https://github.com/TwinConsult-AS/akn-profiler/issues).
 
 ## Release Notes
+
+### 0.1.6
+
+Fixed spurious double-quotes around cardinality values in autocomplete and profile generation output. `meta: "1..1"` is now `meta: 1..1`, consistent with cascade expand and code-action output.
+
+### 0.1.5
+
+Identity settings (`autoAddEId`, `autoAddWId`, `autoAddGUID`, `defaultRequired`) now apply immediately without restarting the extension. Removed the no-op `aknProfiler.schema.version` setting.
 
 ### 0.1.4
 

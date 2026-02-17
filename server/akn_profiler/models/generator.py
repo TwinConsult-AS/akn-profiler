@@ -298,14 +298,14 @@ def _to_plain_yaml(profile: ProfileDocument) -> str:
                 lines.append("      children:")
                 for child_name, cardinality in restriction.children.items():
                     if cardinality:
-                        lines.append(f'        {child_name}: "{cardinality}"')
+                        lines.append(f"        {child_name}: {cardinality}")
                     else:
                         lines.append(f"        {child_name}:")
                 if restriction.exclusive_children:
                     lines.append("        choice:")
                     for bchild, bcard in restriction.exclusive_children.items():
                         if bcard:
-                            lines.append(f'          {bchild}: "{bcard}"')
+                            lines.append(f"          {bchild}: {bcard}")
                         else:
                             lines.append(f"          {bchild}:")
 
@@ -398,7 +398,7 @@ def _to_commented_yaml(profile: ProfileDocument, schema: AknSchema) -> str:
                 for child_name, cardinality in restriction.children.items():
                     tag = " # required" if child_name in req_names else ""
                     if cardinality:
-                        lines.append(f'        {child_name}: "{cardinality}"{tag}')
+                        lines.append(f"        {child_name}: {cardinality}{tag}")
                     else:
                         lines.append(f"        {child_name}:{tag}")
                 if restriction.exclusive_children:
@@ -407,7 +407,7 @@ def _to_commented_yaml(profile: ProfileDocument, schema: AknSchema) -> str:
                     for bchild, bcard in restriction.exclusive_children.items():
                         tag = " # required" if bchild in req_names else ""
                         if bcard:
-                            lines.append(f'          {bchild}: "{bcard}"{tag}')
+                            lines.append(f"          {bchild}: {bcard}{tag}")
                         else:
                             lines.append(f"          {bchild}:{tag}")
 

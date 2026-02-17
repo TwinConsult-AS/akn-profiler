@@ -5,6 +5,12 @@ All notable changes to the AKN Profiler extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] — 2026-02-17
+
+### Fixed
+
+- **Cardinality values no longer wrapped in quotes** — autocomplete insertions and profile generation previously emitted `meta: "1..1"` with spurious double-quotes around the cardinality. Now emits `meta: 1..1`, consistent with cascade expand output and code-action output. Both forms are valid YAML, but the inconsistency caused visual noise and unexpected diffs.
+
 ## [0.1.5] — 2026-02-17
 
 ### Fixed

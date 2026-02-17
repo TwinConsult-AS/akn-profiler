@@ -100,7 +100,7 @@ logging.basicConfig(
 logger = logging.getLogger("akn_profiler")
 
 # Create the language server instance
-server = LanguageServer("akn-profiler", "v0.1.5")
+server = LanguageServer("akn-profiler", "v0.1.6")
 
 
 # Module-level schema instance — populated during initialize
@@ -514,7 +514,7 @@ def completion(params: CompletionParams) -> CompletionList:
                         if c.name == child_name:
                             card = c.cardinality
                             break
-                snippet = f'{child_name}: "{card}"' if card else f"{child_name}:"
+                snippet = f"{child_name}: {card}" if card else f"{child_name}:"
                 # Sort by required first, then by group, then alphabetical
                 group_sort = group_label or "zzz"
                 items.append(
@@ -566,7 +566,7 @@ def completion(params: CompletionParams) -> CompletionList:
                             card = c.cardinality
                             break
                 if card:
-                    branch_text = f'{child_name}: "{card}"'
+                    branch_text = f"{child_name}: {card}"
                 else:
                     branch_text = f"{child_name}:"
                 # Chain auto-suggest: if fewer than 2 choice elements
