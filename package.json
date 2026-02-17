@@ -2,7 +2,7 @@
   "name": "akn-profiler",
   "displayName": "AKN Profiler",
   "description": "VS Code extension for writing YAML application profiles that restrict the Akoma Ntoso (AKN) XML schema. Provides autocomplete, inline suggestions, and automatic generation of minimum viable profiles.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "TwinConsultAS",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "icon.png",
@@ -208,14 +208,6 @@
           "type": "string",
           "default": "python",
           "description": "Path to the Python interpreter used to run the language server."
-        },
-        "aknProfiler.schema.version": {
-          "type": "string",
-          "default": "3.0",
-          "enum": [
-            "3.0"
-          ],
-          "description": "Akoma Ntoso schema version to use."
         },
         "aknProfiler.identity.autoAddEId": {
           "type": "boolean",

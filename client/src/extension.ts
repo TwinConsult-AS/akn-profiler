@@ -201,7 +201,6 @@ export async function activate(context: ExtensionContext): Promise<void> {
   outputChannel.appendLine(`Server command: ${resolvedPython} -m akn_profiler`);
 
   // Build LanguageClientOptions for .akn.yaml documents
-  const schemaVersion = workspace.getConfiguration("aknProfiler").get<string>("schema.version", "3.0");
   const identityConfig = workspace.getConfiguration("aknProfiler.identity");
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
@@ -211,10 +210,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
     ],
     synchronize: {
       fileEvents: workspace.createFileSystemWatcher("**/*.akn.{yaml,yml}"),
+      configurationSection: "aknProfiler",
     },
     outputChannel: outputChannel,
     initializationOptions: {
-      schemaVersion,
       autoAddEId: identityConfig.get<boolean>("autoAddEId", true),
       autoAddWId: identityConfig.get<boolean>("autoAddWId", true),
       autoAddGUID: identityConfig.get<boolean>("autoAddGUID", false),

@@ -57,6 +57,7 @@ from lsprotocol.types import (
     CompletionParams,
     Diagnostic,
     DiagnosticSeverity,
+    DidChangeConfigurationParams,
     DidChangeTextDocumentParams,
     DidCloseTextDocumentParams,
     DidOpenTextDocumentParams,
@@ -99,7 +100,7 @@ logging.basicConfig(
 logger = logging.getLogger("akn_profiler")
 
 # Create the language server instance
-server = LanguageServer("akn-profiler", "v0.1.4")
+server = LanguageServer("akn-profiler", "v0.1.5")
 
 
 # Module-level schema instance — populated during initialize
@@ -144,21 +145,17 @@ def initialize(params: InitializeParams) -> None:
     logger.info(f"Client: {params.client_info}")
     logger.info(f"Root URI: {params.root_uri}")
 
-    # Read schema version from client initialization options (reserved for future use)
-    schema_version = "3.0"
+    # Read identity attribute auto-add settings from initialization options
     if params.initialization_options and isinstance(params.initialization_options, dict):
-        schema_version = params.initialization_options.get("schemaVersion", "3.0")
-        # Read identity attribute auto-add settings
         _auto_add_eid = bool(params.initialization_options.get("autoAddEId", True))
         _auto_add_wid = bool(params.initialization_options.get("autoAddWId", True))
         _auto_add_guid = bool(params.initialization_options.get("autoAddGUID", False))
         _auto_id_required = bool(params.initialization_options.get("defaultRequired", True))
-    logger.info(f"Schema version: {schema_version}")
     logger.info(
         f"Identity auto-add: eId={_auto_add_eid}, wId={_auto_add_wid}, GUID={_auto_add_guid}, required={_auto_id_required}"
     )
 
-    # Phase 1: Load the AKN XSD schema (currently only 3.0 is supported)
+    # Load the AKN XSD schema (currently only 3.0 is supported)
     akn_schema = AknSchema.load()
     logger.info(
         "AKN schema loaded: %d elements, %d enums",
@@ -166,6 +163,24 @@ def initialize(params: InitializeParams) -> None:
         len(akn_schema.all_enums()),
     )
     logger.info("✅ AKN Profiler server initialized")
+
+
+@server.feature("workspace/didChangeConfiguration")
+def did_change_configuration(params: DidChangeConfigurationParams) -> None:
+    """Handle configuration changes from the client."""
+    global _auto_add_eid, _auto_add_wid, _auto_add_guid, _auto_id_required
+    settings = params.settings
+    if isinstance(settings, dict):
+        identity = settings.get("aknProfiler", {}).get("identity", {})
+        if identity:
+            _auto_add_eid = bool(identity.get("autoAddEId", _auto_add_eid))
+            _auto_add_wid = bool(identity.get("autoAddWId", _auto_add_wid))
+            _auto_add_guid = bool(identity.get("autoAddGUID", _auto_add_guid))
+            _auto_id_required = bool(identity.get("defaultRequired", _auto_id_required))
+            logger.info(
+                f"Config updated — identity auto-add: eId={_auto_add_eid}, wId={_auto_add_wid}, "
+                f"GUID={_auto_add_guid}, required={_auto_id_required}"
+            )
 
 
 @server.feature("shutdown")

@@ -5,6 +5,16 @@ All notable changes to the AKN Profiler extension will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] — 2026-02-17
+
+### Fixed
+
+- **Identity settings now apply immediately** — changing `autoAddEId`, `autoAddWId`, `autoAddGUID`, or `defaultRequired` in VS Code settings now takes effect without restarting the extension. Previously these were only read at server startup.
+
+### Removed
+
+- **`aknProfiler.schema.version` setting** — removed the no-op schema version dropdown (only "3.0" existed and had no effect). Will be re-introduced when additional schema versions are supported.
+
 ## [0.1.4] — 2026-02-16
 
 ### Added
